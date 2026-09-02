@@ -352,6 +352,11 @@ impl super::TermWindow {
                 self.set_inner_size(window, dims.pixel_width, dims.pixel_height);
             }
         }
+
+        // A resize can push the window under the sidebar auto-hide
+        // threshold, and an open sidebar menu's anchor is now stale.
+        self.close_sidebar_menu();
+        self.update_show_sidebar();
     }
 
     pub fn current_cell_dimensions(&self) -> RowsAndCols {

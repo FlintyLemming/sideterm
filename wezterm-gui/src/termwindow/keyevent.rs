@@ -597,6 +597,16 @@ impl super::TermWindow {
     }
 
     pub fn key_event_impl(&mut self, window_key: KeyEvent, context: &dyn WindowOps) {
+        if self.sidebar_menu.is_some() {
+            self.close_sidebar_menu();
+            // Escape is swallowed entirely; any other key dismisses
+            // the menu and is then delivered to the pane as usual.
+            // (window::KeyCode represents Escape as Char('\u{1b}'))
+            if matches!(window_key.key, KeyCode::Char('\u{1b}')) {
+                return;
+            }
+        }
+
         let pane = match self.get_active_pane_or_overlay() {
             Some(pane) => pane,
             None => return,

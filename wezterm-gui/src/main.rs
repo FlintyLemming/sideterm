@@ -50,6 +50,7 @@ mod scrollbar;
 mod selection;
 mod shapecache;
 mod sidebar;
+mod sidebar_menu;
 mod spawn;
 mod stats;
 mod tabbar;

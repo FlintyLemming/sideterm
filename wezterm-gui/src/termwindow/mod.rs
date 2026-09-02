@@ -160,6 +160,8 @@ pub enum UIItemType {
     BelowScrollThumb,
     Split(PositionedSplit),
     Sidebar(crate::sidebar::SidebarItem),
+    /// Index into sidebar_menu::MENU_ITEMS
+    SidebarMenuItem(usize),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -396,6 +398,7 @@ pub struct TermWindow {
     sidebar_toggled: bool,
     sidebar: Option<crate::sidebar::SidebarState>,
     sidebar_hover: Option<crate::sidebar::SidebarItem>,
+    sidebar_menu: Option<crate::sidebar_menu::SidebarMenuState>,
     show_scroll_bar: bool,
     tab_bar: TabBarState,
     fancy_tab_bar: Option<box_model::ComputedElement>,
@@ -731,6 +734,7 @@ impl TermWindow {
             sidebar_toggled: false,
             sidebar: None,
             sidebar_hover: None,
+            sidebar_menu: None,
             show_scroll_bar: config.enable_scroll_bar,
             tab_bar: TabBarState::default(),
             fancy_tab_bar: None,
@@ -1785,6 +1789,7 @@ impl TermWindow {
         if new != self.show_sidebar {
             self.show_sidebar = new;
             self.invalidate_sidebar();
+            self.close_sidebar_menu();
             // Re-apply dimensions exactly the way config_was_reloaded
             // does at its tail: call apply_dimensions with the current
             // dimensions and invalidate the window.
@@ -1800,6 +1805,45 @@ impl TermWindow {
     /// Drop the cached sidebar model so it is rebuilt on next paint.
     pub fn invalidate_sidebar(&mut self) {
         self.sidebar.take();
+    }
+
+    pub fn show_sidebar_menu(&mut self, workspace: String, x: f32, y: f32) {
+        // The row highlight is superseded by the menu
+        self.sidebar_hover = None;
+        self.sidebar_menu
+            .replace(crate::sidebar_menu::SidebarMenuState {
+                workspace,
+                x,
+                y,
+                hovered: None,
+            });
+        if let Some(window) = self.window.as_ref() {
+            window.invalidate();
+        }
+    }
+
+    pub fn close_sidebar_menu(&mut self) {
+        if self.sidebar_menu.take().is_some() {
+            if let Some(window) = self.window.as_ref() {
+                window.invalidate();
+            }
+        }
+    }
+
+    fn dispatch_sidebar_menu_action(
+        &mut self,
+        workspace: String,
+        action: crate::sidebar_menu::SidebarMenuAction,
+    ) {
+        use crate::sidebar_menu::SidebarMenuAction::*;
+        match action {
+            MoveUp => Mux::get().move_workspace_in_sidebar(&workspace, -1),
+            MoveDown => Mux::get().move_workspace_in_sidebar(&workspace, 1),
+            // Rename / SetDefaultCwd / SetDefaultCommand / Remove are
+            // wired to prompt/confirm overlays in Task 6.
+            Rename | SetDefaultCwd | SetDefaultCommand | Remove => {}
+        }
+        self.invalidate_sidebar();
     }
 
     pub fn config_was_reloaded(&mut self) {

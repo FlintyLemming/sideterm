@@ -48,7 +48,8 @@ impl super::TermWindow {
             | UIItemType::AboveScrollThumb
             | UIItemType::BelowScrollThumb
             | UIItemType::ScrollThumb
-            | UIItemType::Split(_) => {}
+            | UIItemType::Split(_)
+            | UIItemType::SidebarMenuItem(_) => {}
         }
     }
 
@@ -62,12 +63,23 @@ impl super::TermWindow {
             | UIItemType::AboveScrollThumb
             | UIItemType::BelowScrollThumb
             | UIItemType::ScrollThumb
-            | UIItemType::Split(_) => {}
+            | UIItemType::Split(_)
+            | UIItemType::SidebarMenuItem(_) => {}
         }
     }
 
     pub fn mouse_event_impl(&mut self, event: MouseEvent, context: &dyn WindowOps) {
         log::trace!("{:?}", event);
+
+        // While the sidebar context menu is open it owns the mouse:
+        // hover tracking, click-to-dispatch, click-outside-to-dismiss,
+        // and swallowing everything else so nothing leaks to the pane.
+        if self.sidebar_menu.is_some() {
+            self.current_mouse_event.replace(event.clone());
+            self.mouse_event_sidebar_menu(&event, context);
+            return;
+        }
+
         let pane = match self.get_active_pane_or_overlay() {
             Some(pane) => pane,
             None => return,
@@ -392,6 +404,7 @@ impl super::TermWindow {
                 self.mouse_event_close_tab(idx, event, context);
             }
             UIItemType::Sidebar(item) => self.mouse_event_sidebar(item.clone(), event, context),
+            UIItemType::SidebarMenuItem(_) => {}
         }
     }
 
@@ -610,10 +623,58 @@ impl super::TermWindow {
                     }
                 }
             }
-            (crate::sidebar::SidebarItem::Entry(_name), WMEK::Press(MousePress::Right)) => {
-                // Context menu is wired up in the overlay plan
-                // (plan 4, Task 3): self.show_workspace_menu(name)
+            (crate::sidebar::SidebarItem::Entry(name), WMEK::Press(MousePress::Right)) => {
+                self.show_sidebar_menu(name.clone(), event.coords.x as f32, event.coords.y as f32);
             }
+            _ => {}
+        }
+        context.set_cursor(Some(CursorIcon::Default));
+    }
+
+    fn mouse_event_sidebar_menu(&mut self, event: &MouseEvent, context: &dyn WindowOps) {
+        match event.kind {
+            WMEK::Move => {
+                let hovered = match self.resolve_ui_item(event) {
+                    Some(item) => match item.item_type {
+                        UIItemType::SidebarMenuItem(idx) => Some(idx),
+                        _ => None,
+                    },
+                    None => None,
+                };
+                if let Some(menu) = self.sidebar_menu.as_mut() {
+                    if menu.hovered != hovered {
+                        menu.hovered = hovered;
+                        context.invalidate();
+                    }
+                }
+            }
+            WMEK::Press(MousePress::Left) => {
+                let hit = self.resolve_ui_item(event).map(|item| item.item_type);
+                match hit {
+                    Some(UIItemType::SidebarMenuItem(idx)) => {
+                        if let Some(menu) = self.sidebar_menu.take() {
+                            let action = crate::sidebar_menu::MENU_ITEMS[idx].0;
+                            self.dispatch_sidebar_menu_action(menu.workspace, action);
+                        }
+                        context.invalidate();
+                    }
+                    // Press outside the menu: close and swallow the
+                    // click (standard menu behavior)
+                    _ => self.close_sidebar_menu(),
+                }
+            }
+            WMEK::Press(MousePress::Right) => {
+                let hit = self.resolve_ui_item(event).map(|item| item.item_type);
+                match hit {
+                    // Right-click another entry: move the menu to it
+                    Some(UIItemType::Sidebar(crate::sidebar::SidebarItem::Entry(name))) => {
+                        self.show_sidebar_menu(name, event.coords.x as f32, event.coords.y as f32);
+                    }
+                    _ => self.close_sidebar_menu(),
+                }
+            }
+            // Swallow releases / wheel while the menu is open so they
+            // don't leak into the pane
             _ => {}
         }
         context.set_cursor(Some(CursorIcon::Default));

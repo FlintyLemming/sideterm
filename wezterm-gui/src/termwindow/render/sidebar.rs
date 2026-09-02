@@ -262,4 +262,108 @@ impl crate::TermWindow {
 
         Ok(())
     }
+
+    pub fn paint_sidebar_menu(
+        &mut self,
+        layers: &mut TripleLayerQuadAllocator,
+    ) -> anyhow::Result<()> {
+        let menu = match self.sidebar_menu.clone() {
+            Some(menu) => menu,
+            None => return Ok(()),
+        };
+
+        // The target workspace may have been renamed or removed while
+        // the menu is open; acting on a ghost entry would be confusing,
+        // so close instead (spec §5).
+        let still_listed = mux::Mux::get()
+            .compute_sidebar_entries()
+            .iter()
+            .any(|entry| entry.name == menu.workspace);
+        if !still_listed {
+            self.close_sidebar_menu();
+            return Ok(());
+        }
+
+        let colors = match self.sidebar.as_ref() {
+            Some(sidebar) => sidebar.colors,
+            None => return Ok(()),
+        };
+
+        let cell_width = self.render_metrics.cell_size.width as f32;
+        let cell_height = self.render_metrics.cell_size.height as f32;
+
+        // Menu colors inherit the sidebar's background/foreground/hover
+        // (spec §2); the border gets its own color.
+        let label_cells = crate::sidebar_menu::MENU_ITEMS
+            .iter()
+            .map(|(_, label)| unicode_column_width(label, None))
+            .max()
+            .unwrap_or(0);
+        let menu_cols = label_cells + 2; // one cell of padding on each side
+        let menu_width = menu_cols as f32 * cell_width;
+        let menu_height = crate::sidebar_menu::MENU_ITEMS.len() as f32 * cell_height;
+
+        // Keep the menu fully inside the window: clamp the anchor when
+        // it would overflow the right/bottom edge (spec §3).
+        let max_x = (self.dimensions.pixel_width as f32 - menu_width).max(0.);
+        let max_y = (self.dimensions.pixel_height as f32 - menu_height).max(0.);
+        let mx = menu.x.clamp(0., max_x);
+        let my = menu.y.clamp(0., max_y);
+
+        // 1px border plus an opaque body so the pane below doesn't
+        // bleed through.
+        self.filled_rectangle(
+            layers,
+            0,
+            euclid::rect(mx - 1., my - 1., menu_width + 2., menu_height + 2.),
+            colors.menu_border.to_linear(),
+        )?;
+        self.filled_rectangle(
+            layers,
+            0,
+            euclid::rect(mx, my, menu_width, menu_height),
+            colors.background.to_linear(),
+        )?;
+
+        if let Some(hovered) = menu.hovered {
+            self.filled_rectangle(
+                layers,
+                0,
+                euclid::rect(
+                    mx,
+                    my + hovered as f32 * cell_height,
+                    menu_width,
+                    cell_height,
+                ),
+                colors.hover_bg.to_linear(),
+            )?;
+        }
+
+        for (idx, (_, label)) in crate::sidebar_menu::MENU_ITEMS.iter().enumerate() {
+            let top = my + idx as f32 * cell_height;
+            let is_hovered = menu.hovered == Some(idx);
+            let fg = if is_hovered {
+                colors.hover_fg
+            } else {
+                colors.foreground
+            };
+            let default_bg = if is_hovered {
+                colors.hover_bg.to_linear()
+            } else {
+                colors.background.to_linear()
+            };
+            let line = styled_line(&format!(" {label} "), fg, menu_cols, false);
+            self.paint_chrome_line(
+                &line,
+                UIItemType::SidebarMenuItem(idx),
+                default_bg,
+                mx,
+                top,
+                menu_width,
+                menu_cols,
+                layers,
+            )?;
+        }
+        Ok(())
+    }
 }
