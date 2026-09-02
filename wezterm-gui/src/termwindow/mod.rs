@@ -666,8 +666,8 @@ impl TermWindow {
         let padding_bottom = config.window_padding.bottom.evaluate_as_pixels(v_context) as usize;
 
         let mut dimensions = Dimensions {
-            pixel_width: (terminal_size.pixel_width + padding_left + padding_right
-                + sidebar_width) as usize,
+            pixel_width: (terminal_size.pixel_width + padding_left + padding_right + sidebar_width)
+                as usize,
             pixel_height: ((terminal_size.rows * render_metrics.cell_size.height as usize)
                 + padding_top
                 + padding_bottom) as usize
@@ -2094,8 +2094,7 @@ impl TermWindow {
 
         if self.show_sidebar {
             let palette = self.palette().clone();
-            let new_sidebar =
-                crate::sidebar::SidebarState::new(&self.config, &palette, self.config.sidebar_width);
+            let new_sidebar = crate::sidebar::SidebarState::new(&self.config, &palette);
             if self.sidebar.as_ref() != Some(&new_sidebar) {
                 self.sidebar = Some(new_sidebar);
                 if let Some(window) = self.window.as_ref() {
