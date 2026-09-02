@@ -159,6 +159,7 @@ pub enum UIItemType {
     ScrollThumb,
     BelowScrollThumb,
     Split(PositionedSplit),
+    Sidebar(crate::sidebar::SidebarItem),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -393,6 +394,7 @@ pub struct TermWindow {
     show_tab_bar: bool,
     show_sidebar: bool,
     sidebar_toggled: bool,
+    sidebar: Option<crate::sidebar::SidebarState>,
     show_scroll_bar: bool,
     tab_bar: TabBarState,
     fancy_tab_bar: Option<box_model::ComputedElement>,
@@ -726,6 +728,7 @@ impl TermWindow {
             show_tab_bar,
             show_sidebar: config.enable_sidebar,
             sidebar_toggled: false,
+            sidebar: None,
             show_scroll_bar: config.enable_scroll_bar,
             tab_bar: TabBarState::default(),
             fancy_tab_bar: None,
@@ -1332,12 +1335,14 @@ impl TermWindow {
                 MuxNotification::TabTitleChanged { .. } => {
                     self.update_title_post_status();
                 }
+                MuxNotification::SidebarChanged | MuxNotification::WorkspaceRenamed { .. } => {
+                    self.invalidate_sidebar();
+                    self.update_title_post_status();
+                }
                 MuxNotification::PaneAdded(_)
-                | MuxNotification::WorkspaceRenamed { .. }
                 | MuxNotification::PaneRemoved(_)
                 | MuxNotification::WindowWorkspaceChanged(_)
                 | MuxNotification::ActiveWorkspaceChanged(_)
-                | MuxNotification::SidebarChanged
                 | MuxNotification::Empty
                 | MuxNotification::WindowCreated(_) => {}
             },
@@ -1790,9 +1795,10 @@ impl TermWindow {
         }
     }
 
-    /// Placeholder until the sidebar rendering task replaces this with
-    /// cache invalidation.
-    pub fn invalidate_sidebar(&mut self) {}
+    /// Drop the cached sidebar model so it is rebuilt on next paint.
+    pub fn invalidate_sidebar(&mut self) {
+        self.sidebar.take();
+    }
 
     pub fn config_was_reloaded(&mut self) {
         log::debug!(
@@ -2083,6 +2089,18 @@ impl TermWindow {
             self.invalidate_modal();
             if let Some(window) = self.window.as_ref() {
                 window.invalidate();
+            }
+        }
+
+        if self.show_sidebar {
+            let palette = self.palette().clone();
+            let new_sidebar =
+                crate::sidebar::SidebarState::new(&self.config, &palette, self.config.sidebar_width);
+            if self.sidebar.as_ref() != Some(&new_sidebar) {
+                self.sidebar = Some(new_sidebar);
+                if let Some(window) = self.window.as_ref() {
+                    window.invalidate();
+                }
             }
         }
 

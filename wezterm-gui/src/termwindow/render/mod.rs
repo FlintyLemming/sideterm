@@ -41,6 +41,7 @@ pub mod fancy_tab_bar;
 pub mod paint;
 pub mod pane;
 pub mod screen_line;
+pub mod sidebar;
 pub mod split;
 pub mod tab_bar;
 pub mod window_buttons;

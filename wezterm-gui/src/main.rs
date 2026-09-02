@@ -49,6 +49,7 @@ mod scripting;
 mod scrollbar;
 mod selection;
 mod shapecache;
+mod sidebar;
 mod spawn;
 mod stats;
 mod tabbar;

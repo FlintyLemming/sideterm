@@ -268,6 +268,10 @@ impl crate::TermWindow {
             }
         }
 
+        if self.show_sidebar {
+            self.paint_sidebar(&mut layers).context("paint_sidebar")?;
+        }
+
         if self.show_tab_bar {
             self.paint_tab_bar(&mut layers).context("paint_tab_bar")?;
         }
