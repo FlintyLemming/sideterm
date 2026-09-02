@@ -391,6 +391,8 @@ pub struct TermWindow {
     dead_key_status: DeadKeyStatus,
     key_table_state: KeyTableState,
     show_tab_bar: bool,
+    show_sidebar: bool,
+    sidebar_toggled: bool,
     show_scroll_bar: bool,
     tab_bar: TabBarState,
     fancy_tab_bar: Option<box_model::ComputedElement>,
@@ -612,6 +614,14 @@ impl TermWindow {
         } else {
             0
         };
+        // The narrow-window hiding is only settled once the TermWindow
+        // exists (update_show_sidebar below); size the initial window
+        // for the configured case.
+        let sidebar_width = if config.enable_sidebar {
+            config.sidebar_width * render_metrics.cell_size.width as usize
+        } else {
+            0
+        };
 
         let terminal_size = TerminalSize {
             rows: physical_rows,
@@ -654,7 +664,8 @@ impl TermWindow {
         let padding_bottom = config.window_padding.bottom.evaluate_as_pixels(v_context) as usize;
 
         let mut dimensions = Dimensions {
-            pixel_width: (terminal_size.pixel_width + padding_left + padding_right) as usize,
+            pixel_width: (terminal_size.pixel_width + padding_left + padding_right
+                + sidebar_width) as usize,
             pixel_height: ((terminal_size.rows * render_metrics.cell_size.height as usize)
                 + padding_top
                 + padding_bottom) as usize
@@ -680,7 +691,7 @@ impl TermWindow {
 
         let connection_name = Connection::get().unwrap().name();
 
-        let myself = Self {
+        let mut myself = Self {
             created: Instant::now(),
             connection_name,
             last_fps_check_time: Instant::now(),
@@ -713,6 +724,8 @@ impl TermWindow {
             leader_is_down: None,
             dead_key_status: DeadKeyStatus::None,
             show_tab_bar,
+            show_sidebar: config.enable_sidebar,
+            sidebar_toggled: false,
             show_scroll_bar: config.enable_scroll_bar,
             tab_bar: TabBarState::default(),
             fancy_tab_bar: None,
@@ -794,6 +807,8 @@ impl TermWindow {
             opengl_info: None,
         };
 
+        myself.update_show_sidebar();
+
         let tw = Rc::new(RefCell::new(myself));
         let tw_event = Rc::clone(&tw);
 
@@ -873,6 +888,11 @@ impl TermWindow {
                         padding_bottom: padding_bottom,
                         border: border,
                         tab_bar_height: tab_bar_height,
+                        sidebar_width: if myself.show_sidebar {
+                            myself.sidebar_pixel_width() as usize
+                        } else {
+                            0
+                        },
                     }
                     .into(),
                 );
@@ -1725,6 +1745,55 @@ impl TermWindow {
         self.palette.as_ref().unwrap()
     }
 
+    pub fn sidebar_pixel_width(&self) -> f32 {
+        self.config.sidebar_width as f32 * self.render_metrics.cell_size.width as f32
+    }
+
+    pub fn compute_show_sidebar(&self) -> bool {
+        // ToggleSidebar flips the configured value for this window:
+        // with enable_sidebar=false (the default) one toggle turns the
+        // sidebar on, with enable_sidebar=true one toggle turns it off.
+        if self.config.enable_sidebar == self.sidebar_toggled {
+            return false;
+        }
+        if self.config.sidebar_hide_when_narrow {
+            // Hide when the sidebar plus a minimal usable terminal
+            // (20 cols) would exceed half+20cols of the window width.
+            let min_terminal_px = 20. * self.render_metrics.cell_size.width as f32;
+            if (self.dimensions.pixel_width as f32)
+                < self.sidebar_pixel_width() * 2. + min_terminal_px
+            {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Recompute `show_sidebar`; on change, re-run dimensioning and
+    /// repaint so the terminal area shrinks/grows. Mirrors how the
+    /// tab-bar visibility flip piggybacks on config_was_reloaded
+    /// (update_title_impl).
+    pub fn update_show_sidebar(&mut self) {
+        let new = self.compute_show_sidebar();
+        if new != self.show_sidebar {
+            self.show_sidebar = new;
+            self.invalidate_sidebar();
+            // Re-apply dimensions exactly the way config_was_reloaded
+            // does at its tail: call apply_dimensions with the current
+            // dimensions and invalidate the window.
+            let dims = self.dimensions;
+            if let Some(window) = self.window.as_ref() {
+                let window = window.clone();
+                self.apply_dimensions(&dims, None, &window);
+                window.invalidate();
+            }
+        }
+    }
+
+    /// Placeholder until the sidebar rendering task replaces this with
+    /// cache invalidation.
+    pub fn invalidate_sidebar(&mut self) {}
+
     pub fn config_was_reloaded(&mut self) {
         log::debug!(
             "config was reloaded, overrides: {:?}",
@@ -1756,6 +1825,10 @@ impl TermWindow {
         } else {
             self.show_tab_bar = config.enable_tab_bar;
         }
+        // config_was_reloaded applies dimensions itself further below,
+        // so just refresh the flag and the cache here.
+        self.show_sidebar = self.compute_show_sidebar();
+        self.invalidate_sidebar();
         *self.cursor_blink_state.borrow_mut() = ColorEase::new(
             config.cursor_blink_rate,
             config.cursor_blink_ease_in,

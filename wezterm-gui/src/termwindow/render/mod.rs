@@ -366,6 +366,11 @@ impl crate::TermWindow {
         let horizontal_gap = self.dimensions.pixel_width as f32
             - self.terminal_size.pixel_width as f32
             - padding_left
+            - if self.show_sidebar {
+                self.sidebar_pixel_width()
+            } else {
+                0.
+            }
             - if self.show_scroll_bar && padding_right.is_zero() {
                 h_context.pixel_cell
             } else {
@@ -391,7 +396,16 @@ impl crate::TermWindow {
             VerticalWindowContentAlignment::Bottom => vertical_gap,
         };
 
-        (padding_left + left_gap, padding_top + top_gap)
+        (
+            padding_left
+                + left_gap
+                + if self.show_sidebar {
+                    self.sidebar_pixel_width()
+                } else {
+                    0.
+                },
+            padding_top + top_gap,
+        )
     }
 
     fn resolve_lock_glyph(

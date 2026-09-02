@@ -169,6 +169,12 @@ impl super::TermWindow {
             0.
         };
 
+        let sidebar_width = if self.show_sidebar {
+            self.sidebar_pixel_width()
+        } else {
+            0.
+        };
+
         let border = self.get_os_border();
 
         let (size, dims, ri_calc) = if let Some(cell_dims) = scale_changed_cells {
@@ -208,7 +214,8 @@ impl super::TermWindow {
 
             let pixel_width = (cols * self.render_metrics.cell_size.width as usize)
                 + (padding_left + padding_right)
-                + (border.left + border.right).get() as usize;
+                + (border.left + border.right).get() as usize
+                + sidebar_width as usize;
 
             let dims = Dimensions {
                 pixel_width: pixel_width as usize,
@@ -225,6 +232,7 @@ impl super::TermWindow {
                 padding_bottom: padding_bottom,
                 border: border,
                 tab_bar_height: tab_bar_height as usize,
+                sidebar_width: sidebar_width as usize,
             };
 
             (size, dims, ri_calc)
@@ -247,10 +255,13 @@ impl super::TermWindow {
                 config.window_padding.bottom.evaluate_as_pixels(v_context) as usize;
             let padding_right = effective_right_padding(&config, h_context);
 
-            let avail_width = dimensions.pixel_width.saturating_sub(
-                (padding_left + padding_right) as usize
-                    + (border.left + border.right).get() as usize,
-            );
+            let avail_width = dimensions
+                .pixel_width
+                .saturating_sub(
+                    (padding_left + padding_right) as usize
+                        + (border.left + border.right).get() as usize,
+                )
+                .saturating_sub(sidebar_width as usize);
             let avail_height = dimensions
                 .pixel_height
                 .saturating_sub(
@@ -283,6 +294,7 @@ impl super::TermWindow {
                 padding_bottom: padding_bottom,
                 border: border,
                 tab_bar_height: tab_bar_height as usize,
+                sidebar_width: sidebar_width as usize,
             };
 
             (size, *dimensions, ri_calc)
