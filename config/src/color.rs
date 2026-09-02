@@ -482,6 +482,22 @@ pub struct SidebarColors {
     /// Text color for the cwd / command subtitle line
     #[dynamic(default)]
     pub subtitle_foreground: Option<RgbaColor>,
+
+    /// Styling for the row under the mouse pointer; defaults to a
+    /// background derived by lightening/darkening the sidebar
+    /// background by ~10%, with the sidebar foreground
+    #[dynamic(default)]
+    pub hover: Option<TabBarColor>,
+
+    /// Color of the active row's left-edge indicator bar; defaults to
+    /// the active row's fg_color (or the palette foreground)
+    #[dynamic(default)]
+    pub active_indicator: Option<RgbaColor>,
+
+    /// Border color of the right-click context menu; defaults to a
+    /// contrast color derived from the sidebar background
+    #[dynamic(default)]
+    pub menu_border: Option<RgbaColor>,
 }
 
 impl SidebarColors {
@@ -501,6 +517,9 @@ impl SidebarColors {
             active: overlay!(active),
             inactive_foreground: overlay!(inactive_foreground),
             subtitle_foreground: overlay!(subtitle_foreground),
+            hover: overlay!(hover),
+            active_indicator: overlay!(active_indicator),
+            menu_border: overlay!(menu_border),
         }
     }
 }

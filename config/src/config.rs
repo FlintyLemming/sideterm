@@ -2288,10 +2288,7 @@ mod test {
         let config = Config::from_lua(value, &lua).unwrap();
         assert_eq!(config.workspaces.len(), 2);
         assert_eq!(config.workspaces[0].name, "api");
-        assert_eq!(
-            config.workspaces[0].cwd,
-            Some(PathBuf::from("D:/code/api"))
-        );
+        assert_eq!(config.workspaces[0].cwd, Some(PathBuf::from("D:/code/api")));
         assert_eq!(
             config.workspaces[0].default_command,
             Some("npm run dev".to_string())
@@ -2334,6 +2331,40 @@ mod test {
         assert!(sidebar.background.is_some());
         assert!(sidebar.foreground.is_some());
         assert!(sidebar.inactive_foreground.is_some());
+    }
+
+    #[test]
+    fn parses_sidebar_hover_and_menu_colors() {
+        let lua = mlua::Lua::new();
+        let value: mlua::Value = lua
+            .load(
+                r##"return {
+                    colors = {
+                        sidebar = {
+                            hover = { bg_color = "#303030", fg_color = "#ffffff" },
+                            active_indicator = "#ff8800",
+                            menu_border = "#101010",
+                        },
+                    },
+                }"##,
+            )
+            .eval()
+            .unwrap();
+        let config = Config::from_lua(value, &lua).unwrap();
+        let sidebar = config.colors.unwrap().sidebar.unwrap();
+        let hover = sidebar.hover.unwrap();
+        assert_eq!(hover.bg_color.to_rgb_string(), "#303030");
+        assert_eq!(hover.fg_color.to_rgb_string(), "#ffffff");
+        assert_eq!(sidebar.active_indicator.unwrap().to_rgb_string(), "#ff8800");
+        assert_eq!(sidebar.menu_border.unwrap().to_rgb_string(), "#101010");
+    }
+
+    #[test]
+    fn sidebar_new_colors_default_to_none() {
+        let sidebar = crate::color::SidebarColors::default();
+        assert!(sidebar.hover.is_none());
+        assert!(sidebar.active_indicator.is_none());
+        assert!(sidebar.menu_border.is_none());
     }
 
     #[test]
