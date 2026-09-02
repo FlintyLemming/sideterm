@@ -48,6 +48,7 @@ pub mod termwiztermtab;
 pub mod tmux;
 pub mod tmux_commands;
 mod tmux_pty;
+pub mod sidebar;
 pub mod window;
 pub mod workspace_defaults;
 
@@ -120,6 +121,7 @@ pub struct Mux {
     identity: RwLock<Option<Arc<ClientId>>>,
     num_panes_by_workspace: RwLock<HashMap<String, usize>>,
     workspace_metadata: RwLock<HashMap<String, WorkspaceMetadata>>,
+    sidebar_overrides: RwLock<sidebar::SidebarOverrides>,
     main_thread_id: std::thread::ThreadId,
     agent: Option<AgentProxy>,
 }
@@ -464,6 +466,7 @@ impl Mux {
             identity: RwLock::new(None),
             num_panes_by_workspace: RwLock::new(HashMap::new()),
             workspace_metadata: RwLock::new(HashMap::new()),
+            sidebar_overrides: RwLock::new(sidebar::SidebarOverrides::default()),
             main_thread_id: std::thread::current().id(),
             agent,
         }
@@ -718,6 +721,57 @@ impl Mux {
             &config.workspaces,
             workspace,
         )
+    }
+
+    /// Total number of tabs across all windows in a workspace.
+    pub fn tab_count_for_workspace(&self, workspace: &str) -> usize {
+        self.windows
+            .read()
+            .values()
+            .filter(|w| w.get_workspace() == workspace)
+            .map(|w| w.iter_tabs().count())
+            .sum()
+    }
+
+    /// The sidebar's display list: configured workspaces merged with
+    /// live ones, with in-memory order/hide overrides applied.
+    pub fn compute_sidebar_entries(&self) -> Vec<sidebar::SidebarEntry> {
+        let config = config::configuration();
+        let live: Vec<(String, usize)> = self
+            .iter_workspaces()
+            .into_iter()
+            .map(|name| {
+                let count = self.tab_count_for_workspace(&name);
+                (name, count)
+            })
+            .collect();
+        let metadata = self.workspace_metadata.read().clone();
+        let overrides = self.sidebar_overrides.read().clone();
+        sidebar::compute_sidebar_entries(&config.workspaces, &live, &metadata, &overrides)
+    }
+
+    /// Move a sidebar entry up (delta < 0) or down (delta > 0) in the
+    /// in-memory display order.
+    pub fn move_workspace_in_sidebar(&self, name: &str, delta: isize) {
+        let current: Vec<String> = self
+            .compute_sidebar_entries()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        {
+            let mut overrides = self.sidebar_overrides.write();
+            sidebar::move_in_order(&current, &mut overrides.order, name, delta);
+        }
+        self.notify(MuxNotification::SidebarChanged);
+    }
+
+    /// Hide an entry from the sidebar without killing the workspace.
+    pub fn hide_workspace_in_sidebar(&self, name: &str) {
+        self.sidebar_overrides
+            .write()
+            .hidden
+            .insert(name.to_string());
+        self.notify(MuxNotification::SidebarChanged);
     }
 
     /// Overrides the current client identity.
