@@ -35,6 +35,7 @@ use windows_sys::Win32::Networking::WinSock::{SOL_SOCKET, SO_RCVBUF, SO_SNDBUF};
 
 pub mod activity;
 pub mod client;
+pub mod command_injection;
 pub mod connui;
 pub mod domain;
 pub mod localpane;
