@@ -1839,9 +1839,97 @@ impl TermWindow {
         match action {
             MoveUp => Mux::get().move_workspace_in_sidebar(&workspace, -1),
             MoveDown => Mux::get().move_workspace_in_sidebar(&workspace, 1),
-            // Rename / SetDefaultCwd / SetDefaultCommand / Remove are
-            // wired to prompt/confirm overlays in Task 6.
-            Rename | SetDefaultCwd | SetDefaultCommand | Remove => {}
+            Rename => {
+                let cb_workspace = workspace.clone();
+                self.prompt_for_workspace_value(
+                    format!("Rename workspace `{workspace}`"),
+                    "New name: ".to_string(),
+                    Some(workspace.clone()),
+                    move |line| {
+                        if let Some(name) = line {
+                            let name = name.trim();
+                            // Empty / unchanged names are not applied
+                            if !name.is_empty() && name != cb_workspace {
+                                Mux::get().rename_workspace(&cb_workspace, name);
+                            }
+                        }
+                    },
+                );
+            }
+            SetDefaultCwd => {
+                let current = Mux::get().resolve_workspace_defaults(&workspace).0;
+                let cb_workspace = workspace.clone();
+                self.prompt_for_workspace_value(
+                    format!(
+                        "Default directory for `{workspace}`\n\
+                         Empty line clears the runtime override."
+                    ),
+                    "cwd: ".to_string(),
+                    current.map(|p| p.to_string_lossy().to_string()),
+                    move |line| {
+                        if let Some(line) = line {
+                            let mux = Mux::get();
+                            let mut meta = mux
+                                .get_workspace_metadata(&cb_workspace)
+                                .unwrap_or_default();
+                            let trimmed = line.trim();
+                            meta.cwd =
+                                (!trimmed.is_empty()).then(|| std::path::PathBuf::from(trimmed));
+                            mux.set_workspace_metadata(&cb_workspace, meta);
+                        }
+                    },
+                );
+            }
+            SetDefaultCommand => {
+                let current = Mux::get().resolve_workspace_defaults(&workspace).1;
+                let cb_workspace = workspace.clone();
+                self.prompt_for_workspace_value(
+                    format!(
+                        "Default command for `{workspace}`\n\
+                         Injected into the shell of each new tab. \
+                         Empty line clears the runtime override."
+                    ),
+                    "command: ".to_string(),
+                    current,
+                    move |line| {
+                        if let Some(line) = line {
+                            let mux = Mux::get();
+                            let mut meta = mux
+                                .get_workspace_metadata(&cb_workspace)
+                                .unwrap_or_default();
+                            let trimmed = line.trim();
+                            meta.default_command =
+                                (!trimmed.is_empty()).then(|| trimmed.to_string());
+                            mux.set_workspace_metadata(&cb_workspace, meta);
+                        }
+                    },
+                );
+            }
+            Remove => {
+                let mux = Mux::get();
+                let tab = match mux.get_active_tab_for_window(self.mux_window_id) {
+                    Some(tab) => tab,
+                    None => return,
+                };
+                let message = format!(
+                    "Remove `{workspace}` from the sidebar?\n\
+                     The workspace itself keeps running."
+                );
+                let cb_workspace = workspace.clone();
+                let (overlay, future) = start_overlay(self, &tab, move |_tab_id, term| {
+                    crate::overlay::confirm::show_confirmation_overlay_with_callback(
+                        term,
+                        &message,
+                        move |confirmed| {
+                            if confirmed {
+                                Mux::get().hide_workspace_in_sidebar(&cb_workspace);
+                            }
+                        },
+                    )
+                });
+                self.assign_overlay(tab.tab_id(), overlay);
+                promise::spawn::spawn(future).detach();
+            }
         }
         self.invalidate_sidebar();
     }
@@ -2481,6 +2569,37 @@ impl TermWindow {
 
         let (overlay, future) = start_overlay(self, &tab, move |_tab_id, term| {
             crate::overlay::confirm::show_confirmation_overlay(term, args, gui_win, pane)
+        });
+        self.assign_overlay(tab.tab_id(), overlay);
+        promise::spawn::spawn(future).detach();
+    }
+
+    /// Open a line-input prompt overlay; the callback runs on the
+    /// overlay thread, so it may call mux APIs directly but must use
+    /// window.notify to touch TermWindow state.
+    fn prompt_for_workspace_value<F>(
+        &mut self,
+        description: String,
+        prompt: String,
+        initial: Option<String>,
+        callback: F,
+    ) where
+        F: FnOnce(Option<String>) + Send + 'static,
+    {
+        let mux = Mux::get();
+        let tab = match mux.get_active_tab_for_window(self.mux_window_id) {
+            Some(tab) => tab,
+            None => return,
+        };
+
+        let (overlay, future) = start_overlay(self, &tab, move |_tab_id, term| {
+            crate::overlay::prompt::show_line_prompt_overlay_with_callback(
+                term,
+                &description,
+                &prompt,
+                initial.as_deref(),
+                callback,
+            )
         });
         self.assign_overlay(tab.tab_id(), overlay);
         promise::spawn::spawn(future).detach();
