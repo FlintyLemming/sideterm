@@ -1,5 +1,5 @@
 use crate::quad::TripleLayerQuadAllocator;
-use crate::sidebar::{ResolvedColors, SidebarItem, SidebarState};
+use crate::sidebar::{SidebarItem, SidebarState};
 use crate::termwindow::render::RenderScreenLineParams;
 use crate::termwindow::{UIItem, UIItemType};
 use finl_unicode::grapheme_clusters::Graphemes;
@@ -7,7 +7,6 @@ use mux::renderable::RenderableDimensions;
 use termwiz::cell::{unicode_column_width, CellAttributes, Intensity};
 use termwiz::color::{ColorSpec, SrgbaTuple};
 use termwiz::surface::SEQ_ZERO;
-use wezterm_term::color::ColorAttribute;
 use wezterm_term::Line;
 use window::color::LinearRgba;
 
@@ -25,37 +24,15 @@ fn truncate_to_width(text: &str, width: usize) -> String {
     out
 }
 
-fn styled_line(text: &str, fg: SrgbaTuple, bg: SrgbaTuple, width: usize, bold: bool) -> Line {
+fn styled_line(text: &str, fg: SrgbaTuple, width: usize, bold: bool) -> Line {
     let mut attrs = CellAttributes::default();
-    attrs
-        .set_foreground(ColorSpec::TrueColor(fg))
-        .set_background(ColorSpec::TrueColor(bg));
+    attrs.set_foreground(ColorSpec::TrueColor(fg));
     if bold {
         attrs.set_intensity(Intensity::Bold);
     }
     let text = truncate_to_width(text, width);
     let padded = format!("{text:<width$}");
     crate::tabbar::parse_status_text(&padded, attrs)
-}
-
-fn row_colors(
-    colors: &ResolvedColors,
-    item: &SidebarItem,
-    is_active: bool,
-    is_open: bool,
-) -> (SrgbaTuple, SrgbaTuple) {
-    match item {
-        SidebarItem::NewButton => (colors.foreground, colors.background),
-        _ => {
-            if is_active {
-                (colors.active_fg, colors.active_bg)
-            } else if is_open {
-                (colors.foreground, colors.background)
-            } else {
-                (colors.inactive_fg, colors.background)
-            }
-        }
-    }
 }
 
 impl crate::TermWindow {
@@ -160,32 +137,75 @@ impl crate::TermWindow {
 
         let window_is_transparent =
             !self.window_background.is_empty() || self.config.window_background_opacity != 1.0;
-        let default_bg = self
-            .palette()
-            .resolve_bg(ColorAttribute::Default)
-            .to_linear()
-            .mul_alpha(if window_is_transparent {
-                0.
-            } else {
-                self.config.text_background_opacity
-            });
+        let bg_alpha = if window_is_transparent {
+            0.
+        } else {
+            self.config.text_background_opacity
+        };
 
         for row in &sidebar.rows {
             if y + cell_height > bottom {
                 break;
             }
-            let (fg, bg) = row_colors(&colors, &row.item, row.is_active, row.is_open);
+            let hovered =
+                row.item != SidebarItem::None && self.sidebar_hover.as_ref() == Some(&row.item);
+            let bg_srgb = if hovered {
+                colors.hover_bg
+            } else if row.is_active {
+                colors.active_bg
+            } else {
+                colors.background
+            };
+            let fg_srgb = if hovered {
+                colors.hover_fg
+            } else {
+                match &row.item {
+                    SidebarItem::NewButton => colors.foreground,
+                    _ => {
+                        if row.is_active {
+                            colors.active_fg
+                        } else if row.is_open {
+                            colors.foreground
+                        } else {
+                            colors.inactive_fg
+                        }
+                    }
+                }
+            };
+            let bg = bg_srgb.to_linear().mul_alpha(bg_alpha);
+
+            let row_y = y;
+            let row_height = cell_height * if row.subtitle.is_some() { 2. } else { 1. };
+            let visible_height = row_height.min(bottom - row_y).max(0.);
+
+            // Full-row background block (spans the subtitle line too)
+            self.filled_rectangle(
+                layers,
+                0,
+                euclid::rect(x, row_y, sidebar_width, visible_height),
+                bg,
+            )?;
+            // Active indicator: 3px bar along the left edge. The 1-cell
+            // text padding below keeps glyphs clear of it.
+            if row.is_active {
+                self.filled_rectangle(
+                    layers,
+                    0,
+                    euclid::rect(x, row_y, 3., visible_height),
+                    colors.active_indicator.to_linear(),
+                )?;
+            }
+
             let title = styled_line(
                 &format!(" {}", row.title),
-                fg,
-                bg,
+                fg_srgb,
                 width_cells,
                 row.is_active,
             );
             self.paint_chrome_line(
                 &title,
                 UIItemType::Sidebar(row.item.clone()),
-                default_bg,
+                bg,
                 x,
                 y,
                 sidebar_width,
@@ -200,14 +220,13 @@ impl crate::TermWindow {
                 let subtitle = styled_line(
                     &format!("   {subtitle}"),
                     colors.subtitle_fg,
-                    colors.background,
                     width_cells,
                     false,
                 );
                 self.paint_chrome_line(
                     &subtitle,
                     UIItemType::Sidebar(row.item.clone()),
-                    default_bg,
+                    bg,
                     x,
                     y,
                     sidebar_width,
@@ -226,11 +245,12 @@ impl crate::TermWindow {
             SEQ_ZERO,
             None,
         );
+        let blank_bg = colors.background.to_linear().mul_alpha(bg_alpha);
         while y + cell_height <= bottom {
             self.paint_chrome_line(
                 &blank,
                 UIItemType::Sidebar(SidebarItem::None),
-                default_bg,
+                blank_bg,
                 x,
                 y,
                 sidebar_width,

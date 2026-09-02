@@ -39,24 +39,30 @@ impl super::TermWindow {
             UIItemType::TabBar(_) => {
                 self.update_title_post_status();
             }
+            UIItemType::Sidebar(ref item) => {
+                if self.sidebar_hover.as_ref() == Some(item) {
+                    self.sidebar_hover = None;
+                }
+            }
             UIItemType::CloseTab(_)
             | UIItemType::AboveScrollThumb
             | UIItemType::BelowScrollThumb
             | UIItemType::ScrollThumb
-            | UIItemType::Split(_)
-            | UIItemType::Sidebar(_) => {}
+            | UIItemType::Split(_) => {}
         }
     }
 
     fn enter_ui_item(&mut self, item: &UIItem) {
         match item.item_type {
             UIItemType::TabBar(_) => {}
+            UIItemType::Sidebar(ref item) => {
+                self.sidebar_hover = Some(item.clone());
+            }
             UIItemType::CloseTab(_)
             | UIItemType::AboveScrollThumb
             | UIItemType::BelowScrollThumb
             | UIItemType::ScrollThumb
-            | UIItemType::Split(_)
-            | UIItemType::Sidebar(_) => {}
+            | UIItemType::Split(_) => {}
         }
     }
 
@@ -247,6 +253,7 @@ impl super::TermWindow {
     }
 
     pub fn mouse_leave_impl(&mut self, context: &dyn WindowOps) {
+        self.sidebar_hover = None;
         self.current_mouse_event = None;
         self.update_title();
         context.set_cursor(Some(CursorIcon::Default));
@@ -573,10 +580,7 @@ impl super::TermWindow {
         context: &dyn WindowOps,
     ) {
         match (&item, &event.kind) {
-            (
-                crate::sidebar::SidebarItem::Entry(name),
-                WMEK::Press(MousePress::Left),
-            ) => {
+            (crate::sidebar::SidebarItem::Entry(name), WMEK::Press(MousePress::Left)) => {
                 // SwitchToWorkspace already spawns the first tab when
                 // the workspace is empty (termwindow/mod.rs
                 // SwitchToWorkspace arm), which picks up the workspace
@@ -593,10 +597,7 @@ impl super::TermWindow {
                     }
                 }
             }
-            (
-                crate::sidebar::SidebarItem::NewButton,
-                WMEK::Press(MousePress::Left),
-            ) => {
+            (crate::sidebar::SidebarItem::NewButton, WMEK::Press(MousePress::Left)) => {
                 if let Some(pane) = self.get_active_pane_or_overlay() {
                     if let Err(err) = self.perform_key_assignment(
                         &pane,
@@ -609,10 +610,7 @@ impl super::TermWindow {
                     }
                 }
             }
-            (
-                crate::sidebar::SidebarItem::Entry(_name),
-                WMEK::Press(MousePress::Right),
-            ) => {
+            (crate::sidebar::SidebarItem::Entry(_name), WMEK::Press(MousePress::Right)) => {
                 // Context menu is wired up in the overlay plan
                 // (plan 4, Task 3): self.show_workspace_menu(name)
             }
