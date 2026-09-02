@@ -48,6 +48,9 @@ pub mod tmux;
 pub mod tmux_commands;
 mod tmux_pty;
 pub mod window;
+pub mod workspace_defaults;
+
+pub use workspace_defaults::WorkspaceMetadata;
 
 use crate::activity::Activity;
 
@@ -95,6 +98,10 @@ pub enum MuxNotification {
         old_workspace: String,
         new_workspace: String,
     },
+    /// Runtime workspace metadata (sidebar overrides, display order,
+    /// hidden entries) changed; GUI subscribers should rebuild sidebar
+    /// state.
+    SidebarChanged,
 }
 
 static LAST_SUBSCRIBER_ID: AtomicUsize = AtomicUsize::new(0);
@@ -111,6 +118,7 @@ pub struct Mux {
     clients: RwLock<HashMap<ClientId, ClientInfo>>,
     identity: RwLock<Option<Arc<ClientId>>>,
     num_panes_by_workspace: RwLock<HashMap<String, usize>>,
+    workspace_metadata: RwLock<HashMap<String, WorkspaceMetadata>>,
     main_thread_id: std::thread::ThreadId,
     agent: Option<AgentProxy>,
 }
@@ -454,6 +462,7 @@ impl Mux {
             clients: RwLock::new(HashMap::new()),
             identity: RwLock::new(None),
             num_panes_by_workspace: RwLock::new(HashMap::new()),
+            workspace_metadata: RwLock::new(HashMap::new()),
             main_thread_id: std::thread::current().id(),
             agent,
         }
@@ -672,6 +681,42 @@ impl Mux {
                 ));
             }
         }
+
+        // Let runtime metadata follow the workspace across the rename
+        let metadata = self.workspace_metadata.write().remove(old_workspace);
+        if let Some(metadata) = metadata {
+            self.workspace_metadata
+                .write()
+                .insert(new_workspace.to_string(), metadata);
+        }
+    }
+
+    /// Set (in-memory only) runtime overrides for a workspace's default
+    /// cwd / default command. Never persisted to the Lua config.
+    pub fn set_workspace_metadata(&self, workspace: &str, metadata: WorkspaceMetadata) {
+        self.workspace_metadata
+            .write()
+            .insert(workspace.to_string(), metadata);
+        self.notify(MuxNotification::SidebarChanged);
+    }
+
+    pub fn get_workspace_metadata(&self, workspace: &str) -> Option<WorkspaceMetadata> {
+        self.workspace_metadata.read().get(workspace).cloned()
+    }
+
+    /// Effective (cwd, default_command) for a workspace:
+    /// runtime override > config `workspaces` entry > unset.
+    pub fn resolve_workspace_defaults(
+        &self,
+        workspace: &str,
+    ) -> (Option<std::path::PathBuf>, Option<String>) {
+        let metadata = self.workspace_metadata.read().get(workspace).cloned();
+        let config = config::configuration();
+        workspace_defaults::resolve_workspace_defaults_impl(
+            metadata.as_ref(),
+            &config.workspaces,
+            workspace,
+        )
     }
 
     /// Overrides the current client identity.
