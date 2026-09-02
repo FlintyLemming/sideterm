@@ -48,6 +48,20 @@ use wezterm_input_types::{
 };
 use wezterm_term::TerminalSize;
 
+/// An entry in the `workspaces` config section: declares a workspace
+/// that can be shown in the sidebar, with optional defaults applied
+/// to every new tab spawned into that workspace.
+#[derive(Debug, Clone, PartialEq, FromDynamic, ToDynamic)]
+pub struct WorkspaceEntry {
+    /// The workspace name; must match the mux workspace name
+    pub name: String,
+    /// Default working directory for new tabs in this workspace
+    pub cwd: Option<PathBuf>,
+    /// Text to inject into the shell of newly spawned tabs in this
+    /// workspace. Empty or whitespace-only values are treated as unset.
+    pub default_command: Option<String>,
+}
+
 #[derive(Debug, Clone, FromDynamic, ToDynamic, ConfigMeta)]
 pub struct Config {
     /// The font size, measured in points
@@ -882,6 +896,12 @@ pub struct Config {
     #[dynamic(default)]
     pub default_workspace: Option<String>,
 
+    /// Declare workspaces that should be listed in the workspace
+    /// sidebar, with optional default cwd / shell command applied to
+    /// every new tab spawned into them.
+    #[dynamic(default)]
+    pub workspaces: Vec<WorkspaceEntry>,
+
     #[dynamic(default)]
     pub xcursor_theme: Option<String>,
 
@@ -1236,6 +1256,21 @@ impl Config {
     /// Check for logical conflicts in the config
     pub fn check_consistency(&self) -> anyhow::Result<()> {
         self.check_domain_consistency()?;
+
+        // Workspace entries: empty names are unusable and duplicate
+        // names are resolved first-match-wins; warn rather than fail.
+        let mut seen = std::collections::HashSet::new();
+        for entry in &self.workspaces {
+            if entry.name.trim().is_empty() {
+                log::warn!("workspaces: ignoring entry with an empty name");
+            } else if !seen.insert(&entry.name) {
+                log::warn!(
+                    "workspaces: duplicate entry for `{}`; later entry is ignored",
+                    entry.name
+                );
+            }
+        }
+
         Ok(())
     }
 
@@ -2211,4 +2246,45 @@ fn default_macos_forward_mods() -> Modifiers {
 
 fn default_colr_rasterizer() -> FontRasterizerSelection {
     FontRasterizerSelection::Harfbuzz
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use mlua::FromLua;
+
+    #[test]
+    fn parses_workspaces_config_section() {
+        let lua = mlua::Lua::new();
+        let value: mlua::Value = lua
+            .load(
+                r#"return {
+                    workspaces = {
+                        { name = "api", cwd = "D:/code/api", default_command = "npm run dev" },
+                        { name = "wezterm", cwd = "C:/Users/FlintyLemming/Projects/wezterm" },
+                    },
+                }"#,
+            )
+            .eval()
+            .unwrap();
+        let config = Config::from_lua(value, &lua).unwrap();
+        assert_eq!(config.workspaces.len(), 2);
+        assert_eq!(config.workspaces[0].name, "api");
+        assert_eq!(
+            config.workspaces[0].cwd,
+            Some(PathBuf::from("D:/code/api"))
+        );
+        assert_eq!(
+            config.workspaces[0].default_command,
+            Some("npm run dev".to_string())
+        );
+        assert_eq!(config.workspaces[1].name, "wezterm");
+        assert_eq!(config.workspaces[1].default_command, None);
+    }
+
+    #[test]
+    fn workspaces_defaults_to_empty() {
+        let config = Config::default();
+        assert!(config.workspaces.is_empty());
+    }
 }
