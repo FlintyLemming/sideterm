@@ -92,6 +92,15 @@ pub async fn spawn_command_internal(
 
     let workspace = mux.active_workspace().clone();
 
+    // The workspace default command is only injected into fresh
+    // interactive shells; an explicit `args` means the user asked
+    // for a specific program instead.
+    let inject_command = if spawn.args.is_none() {
+        mux.resolve_workspace_defaults(&workspace).1
+    } else {
+        None
+    };
+
     match spawn_where {
         SpawnWhere::SplitPane(direction) => {
             let src_window_id = match src_window_id {
@@ -145,6 +154,20 @@ pub async fn spawn_command_internal(
             // the new window being created.
             if Some(window_id) == src_window_id {
                 pane.set_config(term_config);
+            }
+
+            if let Some(command) = inject_command {
+                let pane = pane.clone();
+                promise::spawn::spawn(async move {
+                    mux::command_injection::inject_text_after_first_output(
+                        &pane,
+                        &format!("{command}\r"),
+                        mux::command_injection::DEFAULT_INJECT_TIMEOUT,
+                        mux::command_injection::DEFAULT_POLL_INTERVAL,
+                    )
+                    .await;
+                })
+                .detach();
             }
         }
     };
