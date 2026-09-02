@@ -43,7 +43,8 @@ impl super::TermWindow {
             | UIItemType::AboveScrollThumb
             | UIItemType::BelowScrollThumb
             | UIItemType::ScrollThumb
-            | UIItemType::Split(_) => {}
+            | UIItemType::Split(_)
+            | UIItemType::Sidebar(_) => {}
         }
     }
 
@@ -54,7 +55,8 @@ impl super::TermWindow {
             | UIItemType::AboveScrollThumb
             | UIItemType::BelowScrollThumb
             | UIItemType::ScrollThumb
-            | UIItemType::Split(_) => {}
+            | UIItemType::Split(_)
+            | UIItemType::Sidebar(_) => {}
         }
     }
 
@@ -382,6 +384,7 @@ impl super::TermWindow {
             UIItemType::CloseTab(idx) => {
                 self.mouse_event_close_tab(idx, event, context);
             }
+            UIItemType::Sidebar(item) => self.mouse_event_sidebar(item.clone(), event, context),
         }
     }
 
@@ -557,6 +560,61 @@ impl super::TermWindow {
                     self.activate_tab_relative(if n < 1 { 1 } else { -1 }, true)
                         .ok();
                 }
+            }
+            _ => {}
+        }
+        context.set_cursor(Some(CursorIcon::Default));
+    }
+
+    fn mouse_event_sidebar(
+        &mut self,
+        item: crate::sidebar::SidebarItem,
+        event: MouseEvent,
+        context: &dyn WindowOps,
+    ) {
+        match (&item, &event.kind) {
+            (
+                crate::sidebar::SidebarItem::Entry(name),
+                WMEK::Press(MousePress::Left),
+            ) => {
+                // SwitchToWorkspace already spawns the first tab when
+                // the workspace is empty (termwindow/mod.rs
+                // SwitchToWorkspace arm), which picks up the workspace
+                // default cwd / command.
+                if let Some(pane) = self.get_active_pane_or_overlay() {
+                    if let Err(err) = self.perform_key_assignment(
+                        &pane,
+                        &KeyAssignment::SwitchToWorkspace {
+                            name: Some(name.clone()),
+                            spawn: None,
+                        },
+                    ) {
+                        log::error!("sidebar SwitchToWorkspace: {err:#}");
+                    }
+                }
+            }
+            (
+                crate::sidebar::SidebarItem::NewButton,
+                WMEK::Press(MousePress::Left),
+            ) => {
+                if let Some(pane) = self.get_active_pane_or_overlay() {
+                    if let Err(err) = self.perform_key_assignment(
+                        &pane,
+                        &KeyAssignment::SwitchToWorkspace {
+                            name: None,
+                            spawn: None,
+                        },
+                    ) {
+                        log::error!("sidebar new workspace: {err:#}");
+                    }
+                }
+            }
+            (
+                crate::sidebar::SidebarItem::Entry(_name),
+                WMEK::Press(MousePress::Right),
+            ) => {
+                // Context menu is wired up in the overlay plan
+                // (plan 4, Task 3): self.show_workspace_menu(name)
             }
             _ => {}
         }

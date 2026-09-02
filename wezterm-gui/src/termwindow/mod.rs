@@ -2782,6 +2782,10 @@ impl TermWindow {
                     }
                 }
             }
+            ToggleSidebar => {
+                self.sidebar_toggled = !self.sidebar_toggled;
+                self.update_show_sidebar();
+            }
             ToggleAlwaysOnBottom => {
                 let window = self.window.clone().unwrap();
                 let current_level = self.window_state.as_window_level();
