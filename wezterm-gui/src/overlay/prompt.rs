@@ -41,8 +41,35 @@ impl LineEditorHost for PromptHost {
     }
 }
 
-pub fn show_line_prompt_overlay(
+/// Line-input prompt whose result goes to a Rust callback instead of
+/// a Lua event. `callback` receives `Some(line)` on Enter (an empty
+/// line is `Some("")`) and `None` on cancel (Escape on an empty line).
+pub fn show_line_prompt_overlay_with_callback<F>(
     mut term: TermWizTerminal,
+    description: &str,
+    prompt: &str,
+    initial_value: Option<&str>,
+    callback: F,
+) -> anyhow::Result<()>
+where
+    F: FnOnce(Option<String>) + Send + 'static,
+{
+    term.no_grab_mouse_in_raw_mode();
+    let mut text = description.replace("\r\n", "\n").replace("\n", "\r\n");
+    text.push_str("\r\n");
+    term.render(&[Change::Text(text)])?;
+
+    let mut host = PromptHost::new();
+    let mut editor = LineEditor::new(&mut term);
+    editor.set_prompt(prompt);
+    let line = editor.read_line_with_optional_initial_value(&mut host, initial_value)?;
+
+    callback(line);
+    Ok(())
+}
+
+pub fn show_line_prompt_overlay(
+    term: TermWizTerminal,
     args: PromptInputLine,
     window: GuiWin,
     pane: MuxPane,
@@ -54,24 +81,19 @@ pub fn show_line_prompt_overlay(
         ),
     };
 
-    term.no_grab_mouse_in_raw_mode();
-    let mut text = args.description.replace("\r\n", "\n").replace("\n", "\r\n");
-    text.push_str("\r\n");
-    term.render(&[Change::Text(text)])?;
-
-    let mut host = PromptHost::new();
-    let mut editor = LineEditor::new(&mut term);
-    editor.set_prompt(&args.prompt);
-    let line =
-        editor.read_line_with_optional_initial_value(&mut host, args.initial_value.as_deref())?;
-
-    promise::spawn::spawn_into_main_thread(async move {
-        trampoline(name, window, pane, line);
-        anyhow::Result::<()>::Ok(())
-    })
-    .detach();
-
-    Ok(())
+    show_line_prompt_overlay_with_callback(
+        term,
+        &args.description,
+        &args.prompt,
+        args.initial_value.as_deref(),
+        move |line| {
+            promise::spawn::spawn_into_main_thread(async move {
+                trampoline(name, window, pane, line);
+                anyhow::Result::<()>::Ok(())
+            })
+            .detach();
+        },
+    )
 }
 
 fn trampoline(name: String, window: GuiWin, pane: MuxPane, line: Option<String>) {

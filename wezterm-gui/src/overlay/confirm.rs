@@ -13,6 +13,22 @@ pub fn run_confirmation(message: &str, term: &mut TermWizTerminal) -> anyhow::Re
     run_confirmation_impl(message, term)
 }
 
+/// Confirmation prompt whose result goes to a Rust callback instead
+/// of a Lua event. `callback` receives true for yes, false for
+/// no/cancel.
+pub fn show_confirmation_overlay_with_callback<F>(
+    mut term: TermWizTerminal,
+    message: &str,
+    callback: F,
+) -> anyhow::Result<()>
+where
+    F: FnOnce(bool) + Send + 'static,
+{
+    let confirmed = run_confirmation(message, &mut term)?;
+    callback(confirmed);
+    Ok(())
+}
+
 fn run_confirmation_impl(message: &str, term: &mut TermWizTerminal) -> anyhow::Result<bool> {
     term.set_raw_mode()?;
 
