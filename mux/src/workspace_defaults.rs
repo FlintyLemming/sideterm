@@ -32,6 +32,15 @@ pub fn resolve_workspace_defaults_impl(
     (cwd, command)
 }
 
+/// Insert the workspace default cwd into the spawn cwd priority chain:
+/// explicit/inherited `cwd` wins; the workspace default only fills a `None`.
+pub fn apply_workspace_default_cwd(
+    cwd: Option<String>,
+    workspace_default: Option<PathBuf>,
+) -> Option<String> {
+    cwd.or_else(|| workspace_default.map(|p| p.to_string_lossy().to_string()))
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -104,5 +113,24 @@ mod test {
         });
         let (cwd, _) = resolve_workspace_defaults_impl(None, &entries, "api");
         assert_eq!(cwd, Some(PathBuf::from("D:/code/api")));
+    }
+
+    #[test]
+    fn workspace_default_cwd_is_only_a_fallback() {
+        // Explicit or inherited cwd wins over the workspace default.
+        assert_eq!(
+            apply_workspace_default_cwd(
+                Some("C:/explicit".to_string()),
+                Some(PathBuf::from("D:/workspace-default")),
+            ),
+            Some("C:/explicit".to_string())
+        );
+        // Workspace default kicks in when nothing earlier produced a cwd.
+        assert_eq!(
+            apply_workspace_default_cwd(None, Some(PathBuf::from("D:/workspace-default"))),
+            Some("D:/workspace-default".to_string())
+        );
+        // No workspace default: stays None so the system default applies downstream.
+        assert_eq!(apply_workspace_default_cwd(None, None), None);
     }
 }

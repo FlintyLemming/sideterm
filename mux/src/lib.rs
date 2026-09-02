@@ -1376,7 +1376,7 @@ impl Mux {
         let window_builder;
         let term_config;
 
-        let (window_id, size) = if let Some(window_id) = window_id {
+        let (window_id, size, workspace) = if let Some(window_id) = window_id {
             let window = self
                 .get_window_mut(window_id)
                 .ok_or_else(|| anyhow!("window_id {} not found on this server", window_id))?;
@@ -1389,12 +1389,14 @@ impl Mux {
             term_config = pane.get_config();
 
             let size = tab.get_size();
+            let workspace = window.get_workspace().to_string();
 
-            (window_id, size)
+            (window_id, size, workspace)
         } else {
             term_config = None;
+            let workspace = workspace_for_new_window.clone();
             window_builder = self.new_empty_window(Some(workspace_for_new_window), window_position);
-            (*window_builder, size)
+            (*window_builder, size, workspace)
         };
 
         if domain.state() == DomainState::Detached {
@@ -1420,6 +1422,14 @@ impl Mux {
             },
             domain.domain_id(),
             CachePolicy::FetchImmediate,
+        );
+
+        // Fall back to the workspace's default cwd when nothing earlier
+        // in the priority chain (explicit command_dir, inherited cwd)
+        // produced one
+        let cwd = workspace_defaults::apply_workspace_default_cwd(
+            cwd,
+            self.resolve_workspace_defaults(&workspace).0,
         );
 
         let tab = domain

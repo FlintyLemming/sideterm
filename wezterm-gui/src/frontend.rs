@@ -94,6 +94,9 @@ impl GuiFrontEnd {
                 MuxNotification::WindowInvalidated(_) => {}
                 MuxNotification::PaneOutput(_) => {}
                 MuxNotification::PaneAdded(_) => {}
+                // The workspace sidebar will subscribe to this in a
+                // later change; nothing to rebuild yet.
+                MuxNotification::SidebarChanged => {}
                 MuxNotification::Alert {
                     pane_id,
                     alert:
