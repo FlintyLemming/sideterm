@@ -496,6 +496,20 @@ pub struct Config {
     /// active tab.  Clicking on a tab activates it.
     #[dynamic(default = "default_true")]
     pub enable_tab_bar: bool,
+
+    /// If true, display the workspace sidebar UI on the left side of
+    /// the window. Defaults to false.
+    #[dynamic(default)]
+    pub enable_sidebar: bool,
+
+    /// Width of the workspace sidebar, in terminal cells.
+    #[dynamic(default = "default_sidebar_width")]
+    pub sidebar_width: usize,
+
+    /// If true, hide the workspace sidebar automatically when the
+    /// window is too narrow for it to be useful.
+    #[dynamic(default = "default_true")]
+    pub sidebar_hide_when_narrow: bool,
     #[dynamic(default = "default_true")]
     pub use_fancy_tab_bar: bool,
 
@@ -1741,6 +1755,10 @@ fn default_scrollback_lines() -> usize {
     3500
 }
 
+fn default_sidebar_width() -> usize {
+    24
+}
+
 const MAX_SCROLLBACK_LINES: usize = 999_999_999;
 fn validate_scrollback_lines(value: &usize) -> Result<(), String> {
     if *value > MAX_SCROLLBACK_LINES {
@@ -2286,5 +2304,43 @@ mod test {
     fn workspaces_defaults_to_empty() {
         let config = Config::default();
         assert!(config.workspaces.is_empty());
+    }
+
+    #[test]
+    fn parses_sidebar_options() {
+        let lua = mlua::Lua::new();
+        let value: mlua::Value = lua
+            .load(
+                r##"return {
+                    enable_sidebar = true,
+                    sidebar_width = 30,
+                    sidebar_hide_when_narrow = false,
+                    colors = {
+                        sidebar = {
+                            background = "#202020",
+                            foreground = "#ffffff",
+                            inactive_foreground = "#808080",
+                        },
+                    },
+                }"##,
+            )
+            .eval()
+            .unwrap();
+        let config = Config::from_lua(value, &lua).unwrap();
+        assert!(config.enable_sidebar);
+        assert_eq!(config.sidebar_width, 30);
+        assert!(!config.sidebar_hide_when_narrow);
+        let sidebar = config.colors.unwrap().sidebar.unwrap();
+        assert!(sidebar.background.is_some());
+        assert!(sidebar.foreground.is_some());
+        assert!(sidebar.inactive_foreground.is_some());
+    }
+
+    #[test]
+    fn sidebar_options_default_off() {
+        let config = Config::default();
+        assert!(!config.enable_sidebar);
+        assert_eq!(config.sidebar_width, 24);
+        assert!(config.sidebar_hide_when_narrow);
     }
 }

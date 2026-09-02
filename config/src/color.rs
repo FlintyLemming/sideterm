@@ -150,6 +150,8 @@ pub struct Palette {
     pub indexed: HashMap<u8, RgbaColor>,
     /// Configure the colors and styling of the tab bar
     pub tab_bar: Option<TabBarColors>,
+    /// Configure the colors and styling of the workspace sidebar
+    pub sidebar: Option<SidebarColors>,
     /// The color of the "thumb" of the scrollbar; the segment that
     /// represents the current viewable area
     pub scrollbar_thumb: Option<RgbaColor>,
@@ -201,6 +203,12 @@ impl Palette {
             ansi: overlay!(ansi),
             brights: overlay!(brights),
             tab_bar: match (&self.tab_bar, &other.tab_bar) {
+                (Some(a), Some(b)) => Some(a.overlay_with(&b)),
+                (None, Some(b)) => Some(b.clone()),
+                (Some(a), None) => Some(a.clone()),
+                (None, None) => None,
+            },
+            sidebar: match (&self.sidebar, &other.sidebar) {
                 (Some(a), Some(b)) => Some(a.overlay_with(&b)),
                 (None, Some(b)) => Some(b.clone()),
                 (Some(a), None) => Some(a.clone()),
@@ -446,6 +454,53 @@ impl TabBarColors {
             inactive_tab_edge_hover: overlay!(inactive_tab_edge_hover),
             new_tab: overlay!(new_tab),
             new_tab_hover: overlay!(new_tab_hover),
+        }
+    }
+}
+
+/// Configure the colors of the workspace sidebar.
+/// Anything left unspecified is derived from the terminal
+/// foreground/background so the sidebar blends in.
+#[derive(Default, Debug, Clone, PartialEq, FromDynamic, ToDynamic)]
+pub struct SidebarColors {
+    /// Background color of the sidebar; defaults to the terminal background
+    #[dynamic(default)]
+    pub background: Option<RgbaColor>,
+
+    /// Text color of entries; defaults to the terminal foreground
+    #[dynamic(default)]
+    pub foreground: Option<RgbaColor>,
+
+    /// Styling for the row of the currently active workspace
+    #[dynamic(default)]
+    pub active: Option<TabBarColor>,
+
+    /// Text color for workspaces that are not currently open
+    #[dynamic(default)]
+    pub inactive_foreground: Option<RgbaColor>,
+
+    /// Text color for the cwd / command subtitle line
+    #[dynamic(default)]
+    pub subtitle_foreground: Option<RgbaColor>,
+}
+
+impl SidebarColors {
+    pub fn overlay_with(&self, other: &Self) -> Self {
+        macro_rules! overlay {
+            ($name:ident) => {
+                if let Some(c) = &other.$name {
+                    Some(c.clone())
+                } else {
+                    self.$name.clone()
+                }
+            };
+        }
+        Self {
+            background: overlay!(background),
+            foreground: overlay!(foreground),
+            active: overlay!(active),
+            inactive_foreground: overlay!(inactive_foreground),
+            subtitle_foreground: overlay!(subtitle_foreground),
         }
     }
 }

@@ -690,6 +690,14 @@ pub fn derive_command_from_key_assignment(action: &KeyAssignment) -> Option<Comm
             icon: None,
 
         },
+        ToggleSidebar => CommandDef {
+            brief: "Toggle workspace sidebar".into(),
+            doc: "Toggles the visibility of the workspace sidebar".into(),
+            keys: vec![],
+            args: &[ArgType::ActiveWindow],
+            menubar: &["View"],
+            icon: None,
+        },
         ToggleAlwaysOnBottom => CommandDef {
             brief: "Toggle always on Bottom".into(),
             doc: "Toggles the window to remain behind all other windows.".into(),
@@ -2066,6 +2074,7 @@ fn compute_default_actions() -> Vec<KeyAssignment> {
         // ----------------- Window
         ToggleFullScreen,
         ToggleAlwaysOnTop,
+        ToggleSidebar,
         ToggleAlwaysOnBottom,
         SetWindowLevel(WindowLevel::AlwaysOnBottom),
         SetWindowLevel(WindowLevel::Normal),

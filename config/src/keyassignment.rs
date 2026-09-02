@@ -539,6 +539,7 @@ pub enum KeyAssignment {
     SpawnWindow,
     ToggleFullScreen,
     ToggleAlwaysOnTop,
+    ToggleSidebar,
     ToggleAlwaysOnBottom,
     SetWindowLevel(WindowLevel),
     CopyTo(ClipboardCopyDestination),
