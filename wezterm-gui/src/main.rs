@@ -73,7 +73,7 @@ pub use termwindow::{set_window_class, set_window_position, TermWindow, ICON_DAT
     version = config::wezterm_version()
 )]
 struct Opt {
-    /// Skip loading wezterm.lua
+    /// Skip loading sideterm.lua
     #[arg(long, short = 'n')]
     skip_config: bool,
 
@@ -200,6 +200,7 @@ fn run_ssh(opts: SshCommand) -> anyhow::Result<()> {
     .detach();
 
     maybe_show_configuration_error_window();
+    maybe_offer_legacy_config_migration();
     gui.run_forever()
 }
 
@@ -251,6 +252,7 @@ fn run_serial(config: config::ConfigHandle, opts: SerialCommand) -> anyhow::Resu
     .detach();
 
     maybe_show_configuration_error_window();
+    maybe_offer_legacy_config_migration();
     gui.run_forever()
 }
 
@@ -789,6 +791,7 @@ fn run_terminal_gui(opts: StartCommand, default_domain_name: Option<String>) -> 
     .detach();
 
     maybe_show_configuration_error_window();
+    maybe_offer_legacy_config_migration();
     gui.run_forever()
 }
 
@@ -848,6 +851,115 @@ fn maybe_show_configuration_error_window() {
         let err = warnings.join("\n");
         mux::connui::show_configuration_error_message(&err);
     }
+}
+
+const DEFAULT_CONFIG_STUB: &str = r#"-- SideTerm configuration.
+-- This file was created automatically because no configuration was found.
+-- Options are compatible with wezterm:
+-- https://wezterm.org/config/files.html
+
+local wezterm = require 'wezterm'
+local config = wezterm.config_builder()
+
+-- For example:
+-- config.color_scheme = 'Builtin Dark'
+
+return config
+"#;
+
+/// If no sideterm configuration file exists but a pre-existing wezterm
+/// configuration was detected, ask the user whether to migrate it.
+/// Answering either way creates ~/.sideterm.lua (a copy, or a fresh
+/// stub) so the question is only asked once.
+fn maybe_offer_legacy_config_migration() {
+    let Some(legacy_path) = config::legacy_config_path() else {
+        return;
+    };
+
+    std::thread::spawn(move || {
+        // The connui window is sized for an 80 column terminal, but the
+        // workspace sidebar chrome eats into the visible text area, so
+        // wrap much narrower than that to keep the text on screen.
+        const WRAP: usize = 44;
+
+        let target = config::HOME_DIR.join(".sideterm.lua");
+
+        let ui = mux::connui::ConnectionUI::new_with_no_close_delay();
+        ui.title("SideTerm Configuration");
+        ui.output_str(&format!(
+            "{}\r\n\r\n{}\r\n",
+            textwrap::fill(
+                "SideTerm uses its own configuration file so that it can be \
+                 configured independently from wezterm.",
+                WRAP
+            ),
+            textwrap::fill(
+                &format!(
+                    "An existing wezterm configuration was found at {}",
+                    legacy_path.display()
+                ),
+                WRAP
+            ),
+        ));
+
+        let answer = ui
+            .input(&format!(
+                "Copy that file to\n{} ?\n[y/n] ",
+                target.display()
+            ))
+            .map(|s| s.trim().to_lowercase());
+
+        match answer.as_deref() {
+            Ok("y") | Ok("yes") => {
+                if let Err(err) = std::fs::copy(&legacy_path, &target) {
+                    ui.output_str(&format!(
+                        "\r\nFailed to copy the configuration: {err:#}\r\n"
+                    ));
+                    return;
+                }
+                ui.output_str(
+                    "\r\nConfiguration copied; reloading.\r\n",
+                );
+                ui.output_str(&format!(
+                    "\r\n{}\r\n",
+                    textwrap::fill(
+                        "Note: only the main configuration file was copied. \
+                         If it references other files (color schemes, lua \
+                         modules) via relative paths, you may need to copy \
+                         those over yourself.",
+                        WRAP
+                    )
+                ));
+            }
+            Ok(_) => {
+                if let Err(err) = std::fs::write(&target, DEFAULT_CONFIG_STUB) {
+                    ui.output_str(&format!(
+                        "\r\nFailed to write {}: {err:#}\r\n",
+                        target.display()
+                    ));
+                    return;
+                }
+                ui.output_str(&format!(
+                    "\r\n{}\r\n",
+                    textwrap::fill(
+                        &format!(
+                            "A fresh configuration file was created at {}",
+                            target.display()
+                        ),
+                        WRAP
+                    )
+                ));
+            }
+            Err(err) => {
+                ui.output_str(&format!("\r\nPrompt failed: {err:#}\r\n"));
+                return;
+            }
+        }
+
+        config::reload();
+        maybe_show_configuration_error_window();
+        ui.output_str("\r\n(you may close this window)\r\n");
+    });
 }
 
 fn run_show_keys(config: config::ConfigHandle, cmd: &ShowKeysCommand) -> anyhow::Result<()> {
@@ -1174,7 +1286,7 @@ fn run() -> anyhow::Result<()> {
     {
         unsafe {
             ::windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(
-                ::windows::core::PCWSTR(wide_string("org.wezfurlong.wezterm").as_ptr()),
+                ::windows::core::PCWSTR(wide_string("org.sideterm.sideterm").as_ptr()),
             )
             .unwrap();
         }
