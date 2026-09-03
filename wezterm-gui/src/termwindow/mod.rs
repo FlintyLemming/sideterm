@@ -1779,8 +1779,8 @@ impl TermWindow {
 
     pub fn compute_show_sidebar(&self) -> bool {
         // ToggleSidebar flips the configured value for this window:
-        // with enable_sidebar=false (the default) one toggle turns the
-        // sidebar on, with enable_sidebar=true one toggle turns it off.
+        // with enable_sidebar=true (the default) one toggle turns the
+        // sidebar off, with enable_sidebar=false one toggle turns it on.
         if self.config.enable_sidebar == self.sidebar_toggled {
             return false;
         }

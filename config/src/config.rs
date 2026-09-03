@@ -498,8 +498,8 @@ pub struct Config {
     pub enable_tab_bar: bool,
 
     /// If true, display the workspace sidebar UI on the left side of
-    /// the window. Defaults to false.
-    #[dynamic(default)]
+    /// the window. Defaults to true.
+    #[dynamic(default = "default_true")]
     pub enable_sidebar: bool,
 
     /// Width of the workspace sidebar, in terminal cells.
@@ -2368,9 +2368,9 @@ mod test {
     }
 
     #[test]
-    fn sidebar_options_default_off() {
+    fn sidebar_options_default_on() {
         let config = Config::default();
-        assert!(!config.enable_sidebar);
+        assert!(config.enable_sidebar);
         assert_eq!(config.sidebar_width, 24);
         assert!(config.sidebar_hide_when_narrow);
     }
