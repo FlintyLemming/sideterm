@@ -23,7 +23,7 @@ mod cli;
 
 #[derive(Debug, Parser)]
 #[command(
-    about = "Sideterm Terminal Emulator\nhttps://github.com/FlintyLemming/sideterm",
+    about = "SideTerm Terminal Emulator\nhttps://github.com/FlintyLemming/sideterm",
     version = wezterm_version()
 )]
 pub struct Opt {

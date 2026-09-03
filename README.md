@@ -1,10 +1,10 @@
-# Sideterm
+# SideTerm
 
 [简体中文](README.zh-CN.md)
 
-**Sideterm** is a fork of [WezTerm](https://github.com/wezterm/wezterm) — a GPU-accelerated cross-platform terminal emulator and multiplexer written in Rust — with one major addition: **a workspace sidebar that turns the terminal from "a pile of tabs" into a two-level "workspaces → tabs" structure**, inspired by [Taxis](https://github.com/mufeedali/taxis) (a Ptyxis fork).
+**SideTerm** is a fork of [WezTerm](https://github.com/wezterm/wezterm) — a GPU-accelerated cross-platform terminal emulator and multiplexer written in Rust — with one major addition: **a workspace sidebar that turns the terminal from "a pile of tabs" into a two-level "workspaces → tabs" structure**, inspired by [Taxis](https://github.com/mufeedali/taxis) (a Ptyxis fork).
 
-Everything upstream WezTerm can do, Sideterm can do; your existing `wezterm.lua` keeps working unchanged. This README documents only **what Sideterm adds on top of upstream**. For everything else, see the upstream docs at <https://wezterm.org/>.
+Everything upstream WezTerm can do, SideTerm can do; your existing `wezterm.lua` keeps working unchanged. This README documents only **what SideTerm adds on top of upstream**. For everything else, see the upstream docs at <https://wezterm.org/>.
 
 ![Screenshot](docs/screenshots/two.png)
 
@@ -38,8 +38,8 @@ The sidebar's context menu, rename prompt, and edit dialogs are painted with the
 
 ### 4. Rebrand and packaging
 
-- The user-visible name is **Sideterm** (window title, menus, about/quit items, update banner). Binary names, crate names, config file paths, `WEZTERM_*` environment variables, the Lua module name and the Windows AppUserModelID are **unchanged**, so existing configs keep working and upstream merges stay easy.
-- A Windows Inno Setup installer (`Sideterm-<ver>-setup.exe`) with its own AppId, so Sideterm can be **installed side-by-side with WezTerm**. Built via a manually triggered GitHub Actions workflow.
+- The user-visible name is **SideTerm** (window title, menus, about/quit items, update banner). Binary names, crate names, config file paths, `WEZTERM_*` environment variables, the Lua module name and the Windows AppUserModelID are **unchanged**, so existing configs keep working and upstream merges stay easy.
+- A Windows Inno Setup installer (`SideTerm-<ver>-setup.exe`) with its own AppId, so SideTerm can be **installed side-by-side with WezTerm**. Built via a manually triggered GitHub Actions workflow.
 
 ## New configuration
 
@@ -70,7 +70,7 @@ Empty names are ignored with a warning; duplicate names are first-match-wins.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enable_sidebar` | bool | `true` ⚠️ | Show the workspace sidebar. **Differs from the original design: Sideterm enables it by default** so the feature is discoverable; upstream WezTerm has no sidebar at all |
+| `enable_sidebar` | bool | `true` ⚠️ | Show the workspace sidebar. **Differs from the original design: SideTerm enables it by default** so the feature is discoverable; upstream WezTerm has no sidebar at all |
 | `sidebar_width` | usize (cells) | `24` | Sidebar width, in terminal cells |
 | `sidebar_hide_when_narrow` | bool | `true` | Automatically hide the sidebar when the window is too narrow for it to be useful |
 
@@ -110,13 +110,13 @@ return {
 
 ## Compatibility and upstream sync
 
-- `main` carries the Sideterm changes; the `upstream` branch tracks upstream WezTerm and is merged back regularly.
+- `main` carries the SideTerm changes; the `upstream` branch tracks upstream WezTerm and is merged back regularly.
 - The mux's existing workspace persistence, session restore, and all other WezTerm features are untouched.
 
 ## Installation
 
-Grab `Sideterm-<ver>-setup.exe` (installer, coexists with WezTerm) or the portable `Sideterm-windows-<ver>.zip` from the [Releases](https://github.com/FlintyLemming/sideterm/releases) page. For other platforms, build from source following the [upstream build instructions](https://wezterm.org/install/source.html).
+Grab `SideTerm-<ver>-setup.exe` (installer, coexists with WezTerm) or the portable `SideTerm-windows-<ver>.zip` from the [Releases](https://github.com/FlintyLemming/sideterm/releases) page. For other platforms, build from source following the [upstream build instructions](https://wezterm.org/install/source.html).
 
 ## Credits
 
-All credit for the terminal itself goes to [Wez Furlong](https://github.com/wez) and the WezTerm contributors. Sideterm only adds the workspace sidebar and packaging described above. If WezTerm is useful to you, consider [sponsoring the upstream project](https://wezterm.org/sponsor.html).
+All credit for the terminal itself goes to [Wez Furlong](https://github.com/wez) and the WezTerm contributors. SideTerm only adds the workspace sidebar and packaging described above. If WezTerm is useful to you, consider [sponsoring the upstream project](https://wezterm.org/sponsor.html).

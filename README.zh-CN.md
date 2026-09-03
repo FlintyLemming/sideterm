@@ -1,10 +1,10 @@
-# Sideterm
+# SideTerm
 
 [English](README.md)
 
-**Sideterm** 是 [WezTerm](https://github.com/wezterm/wezterm) 的分支（fork）。WezTerm 是一个用 Rust 编写的 GPU 加速跨平台终端模拟器与复用器。Sideterm 在此基础上加入了一个核心功能：**工作区侧边栏，把终端从「一堆标签页」变成「工作区 → 标签页」的两级结构**，灵感来自 [Taxis](https://github.com/mufeedali/taxis)（Ptyxis 的分支）。
+**SideTerm** 是 [WezTerm](https://github.com/wezterm/wezterm) 的分支（fork）。WezTerm 是一个用 Rust 编写的 GPU 加速跨平台终端模拟器与复用器。SideTerm 在此基础上加入了一个核心功能：**工作区侧边栏，把终端从「一堆标签页」变成「工作区 → 标签页」的两级结构**，灵感来自 [Taxis](https://github.com/mufeedali/taxis)（Ptyxis 的分支）。
 
-上游 WezTerm 能做的，Sideterm 都能做；你现有的 `wezterm.lua` 配置无需修改即可使用。本 README 只记录 **Sideterm 相对上游新增的内容**，其余功能请参考上游文档 <https://wezterm.org/>。
+上游 WezTerm 能做的，SideTerm 都能做；你现有的 `wezterm.lua` 配置无需修改即可使用。本 README 只记录 **SideTerm 相对上游新增的内容**，其余功能请参考上游文档 <https://wezterm.org/>。
 
 ![Screenshot](docs/screenshots/two.png)
 
@@ -38,8 +38,8 @@
 
 ### 4. 更名与打包
 
-- 用户可见名称改为 **Sideterm**（窗口标题、菜单、关于/退出项、更新提示）。二进制文件名、crate 名、配置文件路径、`WEZTERM_*` 环境变量、Lua 模块名和 Windows AppUserModelID **均未改变**，现有配置继续可用，也方便合并上游更新。
-- 提供 Windows Inno Setup 安装包（`Sideterm-<ver>-setup.exe`），使用独立的 AppId，可与 WezTerm **共存安装**。通过手动触发的 GitHub Actions 工作流构建。
+- 用户可见名称改为 **SideTerm**（窗口标题、菜单、关于/退出项、更新提示）。二进制文件名、crate 名、配置文件路径、`WEZTERM_*` 环境变量、Lua 模块名和 Windows AppUserModelID **均未改变**，现有配置继续可用，也方便合并上游更新。
+- 提供 Windows Inno Setup 安装包（`SideTerm-<ver>-setup.exe`），使用独立的 AppId，可与 WezTerm **共存安装**。通过手动触发的 GitHub Actions 工作流构建。
 
 ## 新增配置
 
@@ -70,7 +70,7 @@ return {
 
 | 选项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `enable_sidebar` | bool | `true` ⚠️ | 是否显示工作区侧边栏。**与最初设计不同：Sideterm 默认开启**，方便发现功能；上游 WezTerm 本身没有侧边栏 |
+| `enable_sidebar` | bool | `true` ⚠️ | 是否显示工作区侧边栏。**与最初设计不同：SideTerm 默认开启**，方便发现功能；上游 WezTerm 本身没有侧边栏 |
 | `sidebar_width` | usize（单元格数） | `24` | 侧边栏宽度，以终端单元格计 |
 | `sidebar_hide_when_narrow` | bool | `true` | 窗口过窄时自动隐藏侧边栏 |
 
@@ -110,13 +110,13 @@ return {
 
 ## 兼容性与上游同步
 
-- `main` 分支承载 Sideterm 的改动；`upstream` 分支跟踪上游 WezTerm，并定期合并回来。
+- `main` 分支承载 SideTerm 的改动；`upstream` 分支跟踪上游 WezTerm，并定期合并回来。
 - mux 现有的工作区持久化、会话恢复以及其他所有 WezTerm 功能均未改动。
 
 ## 安装
 
-从 [Releases](https://github.com/FlintyLemming/sideterm/releases) 页面下载 `Sideterm-<ver>-setup.exe`（安装包，可与 WezTerm 共存）或绿色版 `Sideterm-windows-<ver>.zip`。其他平台请按[上游编译说明](https://wezterm.org/install/source.html)从源码构建。
+从 [Releases](https://github.com/FlintyLemming/sideterm/releases) 页面下载 `SideTerm-<ver>-setup.exe`（安装包，可与 WezTerm 共存）或绿色版 `SideTerm-windows-<ver>.zip`。其他平台请按[上游编译说明](https://wezterm.org/install/source.html)从源码构建。
 
 ## 致谢
 
-终端本身的全部功劳属于 [Wez Furlong](https://github.com/wez) 和 WezTerm 的贡献者们。Sideterm 只加上了上述的工作区侧边栏与打包。如果 WezTerm 对你有用，欢迎[赞助上游项目](https://wezterm.org/sponsor.html)。
+终端本身的全部功劳属于 [Wez Furlong](https://github.com/wez) 和 WezTerm 的贡献者们。SideTerm 只加上了上述的工作区侧边栏与打包。如果 WezTerm 对你有用，欢迎[赞助上游项目](https://wezterm.org/sponsor.html)。

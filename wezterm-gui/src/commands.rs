@@ -420,7 +420,7 @@ impl CommandDef {
         commands.retain(|cmd| !cmd.menubar.is_empty());
 
         // Prefer to put the menus in this order
-        let mut order: Vec<&'static str> = vec!["Sideterm", "Shell", "Edit", "View", "Window"];
+        let mut order: Vec<&'static str> = vec!["SideTerm", "Shell", "Edit", "View", "Window"];
         // Add any other menus on the end
         for cmd in &commands {
             if !order.contains(&cmd.menubar[0]) {
@@ -440,11 +440,11 @@ impl CommandDef {
                         // macOS will insert stuff at the top and bottom, so we add
                         // a separator to tidy things up a bit
                         menu.add_item(&MenuItem::new_separator());
-                    } else if cmd.menubar[0] == "Sideterm" {
+                    } else if cmd.menubar[0] == "SideTerm" {
                         menu.assign_as_app_menu();
 
                         let about_item = MenuItem::new_with(
-                            &format!("Sideterm {}", config::wezterm_version()),
+                            &format!("SideTerm {}", config::wezterm_version()),
                             Some(wezterm_perform_key_assignment_sel),
                             "",
                         );
@@ -753,7 +753,7 @@ pub fn derive_command_from_key_assignment(action: &KeyAssignment) -> Option<Comm
                 .into(),
             keys: vec![(Modifiers::SUPER, "h".into())],
             args: &[],
-            menubar: &["Sideterm"],
+            menubar: &["SideTerm"],
             icon: None,
         },
         SpawnWindow => CommandDef {
@@ -1276,15 +1276,15 @@ pub fn derive_command_from_key_assignment(action: &KeyAssignment) -> Option<Comm
             doc: "Reloads the configuration file".into(),
             keys: vec![(Modifiers::SUPER, "r".into())],
             args: &[],
-            menubar: &["Sideterm"],
+            menubar: &["SideTerm"],
             icon: Some("md_reload"),
         },
         QuitApplication => CommandDef {
-            brief: "Quit Sideterm".into(),
-            doc: "Quits Sideterm".into(),
+            brief: "Quit SideTerm".into(),
+            doc: "Quits SideTerm".into(),
             keys: vec![(Modifiers::SUPER, "q".into())],
             args: &[],
-            menubar: &["Sideterm"],
+            menubar: &["SideTerm"],
             icon: Some("oct_stop"),
         },
         MoveTabRelative(-1) => CommandDef {

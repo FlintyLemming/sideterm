@@ -16,7 +16,7 @@ mod daemonize;
 
 #[derive(Debug, Parser)]
 #[command(
-    about = "Sideterm Terminal Emulator\nhttps://github.com/FlintyLemming/sideterm",
+    about = "SideTerm Terminal Emulator\nhttps://github.com/FlintyLemming/sideterm",
     version = config::wezterm_version(),
     trailing_var_arg = true,
 )]
