@@ -119,12 +119,12 @@ BEGIN
         BLOCK "040904E4"
         BEGIN
             VALUE "CompanyName",      "Wez Furlong\0"
-            VALUE "FileDescription",  "WezTerm - Wez's Terminal Emulator\0"
+            VALUE "FileDescription",  "Sideterm Terminal Emulator\0"
             VALUE "FileVersion",      "{version}\0"
             VALUE "LegalCopyright",   "Wez Furlong, MIT licensed\0"
             VALUE "InternalName",     "\0"
             VALUE "OriginalFilename", "\0"
-            VALUE "ProductName",      "WezTerm\0"
+            VALUE "ProductName",      "Sideterm\0"
             VALUE "ProductVersion",   "{version}\0"
         END
     END
