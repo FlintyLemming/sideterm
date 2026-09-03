@@ -7,7 +7,7 @@
 ;#define MyAppVersion "1.5"
 #define MyAppPublisher "FlintyLemming"
 #define MyAppURL "https://github.com/FlintyLemming/sideterm"
-#define MyAppExeName "wezterm-gui.exe"
+#define MyAppExeName "sideterm-gui.exe"
 
 [Setup]
 ; NOTE: AppId is intentionally different from wezterm's so that SideTerm
@@ -46,9 +46,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\target\release\wezterm.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\target\release\wezterm-gui.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\target\release\wezterm-mux-server.exe"; DestDir: "{app}"; Flags: ignoreversion
+; The cargo build still produces wezterm-* names; install them renamed to
+; sideterm-* so the installed product is visibly distinct from wezterm.
+Source: "..\target\release\wezterm.exe"; DestDir: "{app}"; DestName: "sideterm.exe"; Flags: ignoreversion
+Source: "..\target\release\wezterm-gui.exe"; DestDir: "{app}"; DestName: "sideterm-gui.exe"; Flags: ignoreversion
+Source: "..\target\release\wezterm-mux-server.exe"; DestDir: "{app}"; DestName: "sideterm-mux-server.exe"; Flags: ignoreversion
 Source: "..\target\release\mesa\opengl32.dll"; DestDir: "{app}\mesa"; Flags: ignoreversion
 Source: "..\target\release\libEGL.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\libGLESv2.dll"; DestDir: "{app}"; Flags: ignoreversion
@@ -59,8 +61,8 @@ Source: "..\target\release\strip-ansi-escapes.exe"; DestDir: "{app}"; Flags: ign
 
 [Icons]
 ; The AppUserModelID must match the one set in wezterm-gui/src/main.rs
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; AppUserModelID: "org.wezfurlong.wezterm"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; AppUserModelID: "org.wezfurlong.wezterm"
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; AppUserModelID: "org.sideterm.sideterm"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; AppUserModelID: "org.sideterm.sideterm"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
