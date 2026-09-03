@@ -313,12 +313,29 @@ impl crate::TermWindow {
                 top: Dimension::Cells(EDGE_PAD_V),
                 bottom: Dimension::Cells(EDGE_PAD_V),
             })
-            .border(BoxDimension::new(Dimension::Pixels(1.)))
+            .border_corners(Some(rounded()))
+            .colors(ElementColors {
+                // The corner discs take the border color, so it must
+                // match the background (same trick as the rows).
+                border: BorderColor::new(bg),
+                // Opaque so the pane below doesn't bleed through.
+                bg: bg.into(),
+                text: colors.foreground.to_linear().into(),
+            });
+
+        // The box model draws each rounded corner as a solid disc in
+        // the border color, so an element can't have a visible border
+        // in a different color than its background. Get the 1px
+        // rounded outline by nesting: this frame's background is the
+        // border color, and the card sits 1px inside it.
+        let frame = Element::new(&font, ElementContent::Children(vec![card]))
+            .display(DisplayType::Block)
+            .item_type(UIItemType::SidebarMenuChrome)
+            .padding(BoxDimension::new(Dimension::Pixels(1.)))
             .border_corners(Some(rounded()))
             .colors(ElementColors {
                 border: BorderColor::new(colors.menu_border.to_linear()),
-                // Opaque so the pane below doesn't bleed through.
-                bg: bg.into(),
+                bg: colors.menu_border.to_linear().into(),
                 text: colors.foreground.to_linear().into(),
             });
 
@@ -328,7 +345,7 @@ impl crate::TermWindow {
         // on top.
         let mut computed = self.compute_element(
             &layout_context(self, &metrics, win_w, win_h, cell_w, 10),
-            &card,
+            &frame,
         )?;
 
         let menu_w = computed.bounds.width();

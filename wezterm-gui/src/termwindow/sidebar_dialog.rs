@@ -323,36 +323,50 @@ impl SidebarDialog {
                     bg: colors.foreground.to_linear().into(),
                     ..ElementColors::default()
                 });
+            let field = Element::new(
+                &font,
+                ElementContent::Children(vec![
+                    Element::new(&font, ElementContent::Text(input.before().to_string())),
+                    caret,
+                    Element::new(&font, ElementContent::Text(input.after().to_string())),
+                ]),
+            )
+            .display(DisplayType::Block)
+            // Span the card's content width (minus the frame's 1px
+            // outline on each side) so the outline doesn't hug the text.
+            .min_width(Some(Dimension::Pixels(content_w - 2.)))
+            .padding(BoxDimension {
+                left: Dimension::Cells(0.5),
+                right: Dimension::Cells(0.5),
+                top: Dimension::Cells(0.3),
+                bottom: Dimension::Cells(0.3),
+            })
+            .border_corners(Some(rounded()))
+            .colors(ElementColors {
+                // The corner discs take the border color, so it must
+                // match the background (tab bar trick).
+                border: BorderColor::new(colors.background.to_linear()),
+                bg: colors.background.to_linear().into(),
+                text: colors.foreground.to_linear().into(),
+            });
+            // A 1px rounded outline in a contrasting color needs a
+            // nested frame: the box model fills each corner with a
+            // solid disc in the border color, so a same-element border
+            // would paint blocks at the corners.
             kids.push(
-                Element::new(
-                    &font,
-                    ElementContent::Children(vec![
-                        Element::new(&font, ElementContent::Text(input.before().to_string())),
-                        caret,
-                        Element::new(&font, ElementContent::Text(input.after().to_string())),
-                    ]),
-                )
-                .display(DisplayType::Block)
-                // Span the card's content width (minus the field's own
-                // border) so the outline doesn't hug the text.
-                .min_width(Some(Dimension::Pixels(content_w - 2.)))
-                .margin(BoxDimension {
-                    top: Dimension::Cells(0.5),
-                    ..BoxDimension::default()
-                })
-                .padding(BoxDimension {
-                    left: Dimension::Cells(0.5),
-                    right: Dimension::Cells(0.5),
-                    top: Dimension::Cells(0.3),
-                    bottom: Dimension::Cells(0.3),
-                })
-                .border(BoxDimension::new(Dimension::Pixels(1.)))
-                .border_corners(Some(rounded()))
-                .colors(ElementColors {
-                    border: BorderColor::new(colors.menu_border.to_linear()),
-                    bg: colors.background.to_linear().into(),
-                    text: colors.foreground.to_linear().into(),
-                }),
+                Element::new(&font, ElementContent::Children(vec![field]))
+                    .display(DisplayType::Block)
+                    .margin(BoxDimension {
+                        top: Dimension::Cells(0.5),
+                        ..BoxDimension::default()
+                    })
+                    .padding(BoxDimension::new(Dimension::Pixels(1.)))
+                    .border_corners(Some(rounded()))
+                    .colors(ElementColors {
+                        border: BorderColor::new(colors.menu_border.to_linear()),
+                        bg: colors.menu_border.to_linear().into(),
+                        text: colors.foreground.to_linear().into(),
+                    }),
             );
         }
 
@@ -455,10 +469,10 @@ impl SidebarDialog {
             // Lets mouse_event tell clicks on the card body (swallow)
             // apart from clicks outside it (cancel).
             .item_type(UIItemType::SidebarDialog)
-            // Floor = content width + horizontal padding + 1px border
-            // on each side, so the card hugs the content width above.
+            // Floor = content width + horizontal padding, so the card
+            // hugs the content width above.
             .min_width(Some(Dimension::Pixels(
-                content_w + 2. * CARD_PAD_H_CELLS * metrics.cell_size.width as f32 + 2.,
+                content_w + 2. * CARD_PAD_H_CELLS * metrics.cell_size.width as f32,
             )))
             .padding(BoxDimension {
                 left: Dimension::Cells(CARD_PAD_H_CELLS),
@@ -466,12 +480,28 @@ impl SidebarDialog {
                 top: Dimension::Cells(0.75),
                 bottom: Dimension::Cells(0.75),
             })
-            .border(BoxDimension::new(Dimension::Pixels(1.)))
+            .border_corners(Some(rounded()))
+            .colors(ElementColors {
+                // The corner discs take the border color, so it must
+                // match the background (tab bar trick).
+                border: BorderColor::new(colors.background.to_linear()),
+                // Opaque so the pane below doesn't bleed through.
+                bg: colors.background.to_linear().into(),
+                text: colors.foreground.to_linear().into(),
+            });
+
+        // The 1px rounded outline comes from a nested frame: the box
+        // model fills each rounded corner with a solid disc in the
+        // border color, so a contrasting border on the card itself
+        // would paint blocks at the corners.
+        let frame = Element::new(&font, ElementContent::Children(vec![card]))
+            .display(DisplayType::Block)
+            .item_type(UIItemType::SidebarDialog)
+            .padding(BoxDimension::new(Dimension::Pixels(1.)))
             .border_corners(Some(rounded()))
             .colors(ElementColors {
                 border: BorderColor::new(colors.menu_border.to_linear()),
-                // Opaque so the pane below doesn't bleed through.
-                bg: colors.background.to_linear().into(),
+                bg: colors.menu_border.to_linear().into(),
                 text: colors.foreground.to_linear().into(),
             });
 
@@ -479,7 +509,7 @@ impl SidebarDialog {
         // clamp the anchor so the card stays fully inside the window.
         let mut computed = term_window.compute_element(
             &layout_context(term_window, &metrics, win_w, win_h),
-            &card,
+            &frame,
         )?;
 
         let card_w = computed.bounds.width();
