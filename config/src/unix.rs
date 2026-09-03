@@ -116,16 +116,26 @@ impl UnixDomain {
     pub fn serve_command(&self) -> anyhow::Result<Vec<OsString>> {
         match self.serve_command.as_ref() {
             Some(cmd) => Ok(cmd.iter().map(Into::into).collect()),
-            None => Ok(vec![
-                std::env::current_exe()?
-                    .with_file_name(if cfg!(windows) {
-                        "wezterm-mux-server.exe"
-                    } else {
-                        "wezterm-mux-server"
-                    })
-                    .into_os_string(),
-                OsString::from("--daemonize"),
-            ]),
+            None => {
+                // The installer renames the executables to sideterm-*;
+                // development builds still produce wezterm-* names, so
+                // prefer the sideterm name and fall back to the wezterm one.
+                let exe = std::env::current_exe()?;
+                let names: &[&str] = if cfg!(windows) {
+                    &["sideterm-mux-server.exe", "wezterm-mux-server.exe"]
+                } else {
+                    &["sideterm-mux-server", "wezterm-mux-server"]
+                };
+                let mux_server = names
+                    .iter()
+                    .map(|name| exe.with_file_name(name))
+                    .find(|candidate| candidate.exists())
+                    .unwrap_or_else(|| exe.with_file_name(names[0]));
+                Ok(vec![
+                    mux_server.into_os_string(),
+                    OsString::from("--daemonize"),
+                ])
+            }
         }
     }
 }

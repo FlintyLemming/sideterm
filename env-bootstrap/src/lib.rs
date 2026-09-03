@@ -86,6 +86,8 @@ pub fn fixup_appimage() {
         /// However, if we are using the system wezterm to spawn a portable
         /// AppImage then we want these to not take effect.
         fn clean_wezterm_config_env() {
+            std::env::remove_var("SIDETERM_CONFIG_FILE");
+            std::env::remove_var("SIDETERM_CONFIG_DIR");
             std::env::remove_var("WEZTERM_CONFIG_FILE");
             std::env::remove_var("WEZTERM_CONFIG_DIR");
         }

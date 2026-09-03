@@ -27,7 +27,7 @@ mod cli;
     version = wezterm_version()
 )]
 pub struct Opt {
-    /// Skip loading wezterm.lua
+    /// Skip loading sideterm.lua
     #[arg(long, short = 'n')]
     skip_config: bool,
 

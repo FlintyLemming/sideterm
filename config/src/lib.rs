@@ -75,6 +75,7 @@ lazy_static! {
     static ref CONFIG_FILE_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
     static ref CONFIG_SKIP: AtomicBool = AtomicBool::new(false);
     static ref CONFIG_OVERRIDES: Mutex<Vec<(String, String)>> = Mutex::new(vec![]);
+    static ref LEGACY_CONFIG_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);
     static ref SHOW_ERROR: Mutex<Option<ErrorCallback>> =
         Mutex::new(Some(|e| log::error!("{}", e)));
     static ref LUA_PIPE: LuaPipe = LuaPipe::new();
@@ -383,15 +384,37 @@ pub fn create_user_owned_dirs(p: &Path) -> anyhow::Result<()> {
 }
 
 fn xdg_config_home() -> PathBuf {
-    match std::env::var_os("XDG_CONFIG_HOME").map(|s| PathBuf::from(s).join("wezterm")) {
+    match std::env::var_os("XDG_CONFIG_HOME").map(|s| PathBuf::from(s).join("sideterm")) {
         Some(p) => p,
-        None => HOME_DIR.join(".config").join("wezterm"),
+        None => HOME_DIR.join(".config").join("sideterm"),
     }
 }
 
 fn config_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     dirs.push(xdg_config_home());
+
+    #[cfg(unix)]
+    if let Some(d) = std::env::var_os("XDG_CONFIG_DIRS") {
+        dirs.extend(std::env::split_paths(&d).map(|s| PathBuf::from(s).join("sideterm")));
+    }
+
+    dirs
+}
+
+fn legacy_xdg_config_home() -> PathBuf {
+    match std::env::var_os("XDG_CONFIG_HOME").map(|s| PathBuf::from(s).join("wezterm")) {
+        Some(p) => p,
+        None => HOME_DIR.join(".config").join("wezterm"),
+    }
+}
+
+/// Config directories used by upstream wezterm; consulted only to
+/// detect a pre-existing configuration that the user may wish to
+/// migrate over to sideterm.
+fn legacy_config_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    dirs.push(legacy_xdg_config_home());
 
     #[cfg(unix)]
     if let Some(d) = std::env::var_os("XDG_CONFIG_DIRS") {
@@ -406,6 +429,17 @@ pub fn set_config_file_override(path: &Path) {
         .lock()
         .unwrap()
         .replace(path.to_path_buf());
+}
+
+/// If no sideterm configuration file was found, but a pre-existing
+/// wezterm configuration file exists, this returns its path so that
+/// the user can be offered a chance to migrate it.
+pub fn legacy_config_path() -> Option<PathBuf> {
+    LEGACY_CONFIG_FILE.lock().unwrap().clone()
+}
+
+pub(crate) fn set_legacy_config_path(path: Option<PathBuf>) {
+    *LEGACY_CONFIG_FILE.lock().unwrap() = path;
 }
 
 pub fn set_config_overrides(items: &[(String, String)]) -> anyhow::Result<()> {

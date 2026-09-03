@@ -25,7 +25,7 @@ use crate::{
     default_true, default_win32_acrylic_accent_color, CellWidth, GpuInfo,
     IntegratedTitleButtonColor, KeyMapPreference, LoadedConfig, MouseEventTriggerMods, RgbaColor,
     SerialDomain, SystemBackdrop, WebGpuPowerPreference, CONFIG_DIRS, CONFIG_FILE_OVERRIDE,
-    CONFIG_OVERRIDES, CONFIG_SKIP, HOME_DIR,
+    CONFIG_OVERRIDES, CONFIG_SKIP,
 };
 use anyhow::Context;
 use luahelper::impl_lua_conversion_dynamic;
@@ -1059,35 +1059,34 @@ impl Config {
         // multiple.  In addition, it spawns a lot of subprocesses,
         // so we do this bit "by-hand"
 
-        let mut paths = vec![PathPossibility::optional(HOME_DIR.join(".wezterm.lua"))];
-        for dir in CONFIG_DIRS.iter() {
-            paths.push(PathPossibility::optional(dir.join("wezterm.lua")))
+        // On Windows, a common use case is to maintain a thumb drive
+        // with a set of portable tools that don't need to be installed
+        // to run on a target system.  In that scenario, the user would
+        // like to run with the config from their thumbdrive because
+        // either the target system won't have any config, or will have
+        // the config of another user.
+        // So we prioritize that here: if there is a config in the same
+        // dir as the executable that will take precedence.
+        let exe_dir = if cfg!(windows) {
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|dir| dir.to_path_buf()))
+        } else {
+            None
+        };
+
+        let env_config_file = std::env::var_os("SIDETERM_CONFIG_FILE");
+        if env_config_file.is_some() {
+            log::trace!("Note: SIDETERM_CONFIG_FILE is set in the environment");
         }
 
-        if cfg!(windows) {
-            // On Windows, a common use case is to maintain a thumb drive
-            // with a set of portable tools that don't need to be installed
-            // to run on a target system.  In that scenario, the user would
-            // like to run with the config from their thumbdrive because
-            // either the target system won't have any config, or will have
-            // the config of another user.
-            // So we prioritize that here: if there is a config in the same
-            // dir as the executable that will take precedence.
-            if let Ok(exe_name) = std::env::current_exe() {
-                if let Some(exe_dir) = exe_name.parent() {
-                    paths.insert(0, PathPossibility::optional(exe_dir.join("wezterm.lua")));
-                }
-            }
-        }
-        if let Some(path) = std::env::var_os("WEZTERM_CONFIG_FILE") {
-            log::trace!("Note: WEZTERM_CONFIG_FILE is set in the environment");
-            paths.insert(0, PathPossibility::required(path.into()));
-        }
-
-        if let Some(path) = CONFIG_FILE_OVERRIDE.lock().unwrap().as_ref() {
-            log::trace!("Note: config file override is set");
-            paths.insert(0, PathPossibility::required(path.clone()));
-        }
+        let paths = config_path_possibilities(
+            &crate::HOME_DIR,
+            &crate::CONFIG_DIRS,
+            exe_dir.clone(),
+            env_config_file.map(Into::into),
+            CONFIG_FILE_OVERRIDE.lock().unwrap().clone(),
+        );
 
         for path_item in &paths {
             if CONFIG_SKIP.load(Ordering::Relaxed) {
@@ -1108,11 +1107,33 @@ impl Config {
             }
         }
 
-        // We didn't find (or were asked to skip) a wezterm.lua file, so
+        // We didn't find (or were asked to skip) a sideterm.lua file, so
         // update the environment to make it simpler to understand this
         // state.
+        std::env::remove_var("SIDETERM_CONFIG_FILE");
+        std::env::remove_var("SIDETERM_CONFIG_DIR");
         std::env::remove_var("WEZTERM_CONFIG_FILE");
         std::env::remove_var("WEZTERM_CONFIG_DIR");
+
+        // If there is a pre-existing wezterm configuration, remember
+        // where it is so that the GUI can offer to migrate it over.
+        if !CONFIG_SKIP.load(Ordering::Relaxed) {
+            let legacy = legacy_config_candidates(
+                &crate::HOME_DIR,
+                &crate::legacy_config_dirs(),
+                exe_dir,
+            )
+            .into_iter()
+            .find(|p| p.exists());
+            if let Some(path) = &legacy {
+                log::warn!(
+                    "No sideterm configuration found, but a pre-existing wezterm \
+                     configuration exists at {}; consider copying it to ~/.sideterm.lua",
+                    path.display()
+                );
+            }
+            crate::set_legacy_config_path(legacy);
+        }
 
         match Self::try_default() {
             Err(err) => LoadedConfig {
@@ -1183,10 +1204,16 @@ impl Config {
                 // problems earlier than we use them.
                 let _ = cfg.key_bindings();
 
+                std::env::set_var("SIDETERM_CONFIG_FILE", p);
+                // Continue to export the wezterm-flavored variable as well:
+                // child processes (scripts, plugins) that know how to locate
+                // their wezterm config via it will find ours.
                 std::env::set_var("WEZTERM_CONFIG_FILE", p);
                 if let Some(dir) = p.parent() {
+                    std::env::set_var("SIDETERM_CONFIG_DIR", dir);
                     std::env::set_var("WEZTERM_CONFIG_DIR", dir);
                 }
+                crate::set_legacy_config_path(None);
                 Ok(cfg)
             });
         let cfg = config?;
@@ -1811,26 +1838,26 @@ fn default_font_size() -> f64 {
 
 pub(crate) fn compute_cache_dir() -> anyhow::Result<PathBuf> {
     if let Some(runtime) = dirs_next::cache_dir() {
-        return Ok(runtime.join("wezterm"));
+        return Ok(runtime.join("sideterm"));
     }
 
-    Ok(crate::HOME_DIR.join(".local/share/wezterm"))
+    Ok(crate::HOME_DIR.join(".local/share/sideterm"))
 }
 
 pub(crate) fn compute_data_dir() -> anyhow::Result<PathBuf> {
     if let Some(runtime) = dirs_next::data_dir() {
-        return Ok(runtime.join("wezterm"));
+        return Ok(runtime.join("sideterm"));
     }
 
-    Ok(crate::HOME_DIR.join(".local/share/wezterm"))
+    Ok(crate::HOME_DIR.join(".local/share/sideterm"))
 }
 
 pub(crate) fn compute_runtime_dir() -> anyhow::Result<PathBuf> {
     if let Some(runtime) = dirs_next::runtime_dir() {
-        return Ok(runtime.join("wezterm"));
+        return Ok(runtime.join("sideterm"));
     }
 
-    Ok(crate::HOME_DIR.join(".local/share/wezterm"))
+    Ok(crate::HOME_DIR.join(".local/share/sideterm"))
 }
 
 pub fn pki_dir() -> anyhow::Result<PathBuf> {
@@ -2085,6 +2112,51 @@ impl PathPossibility {
     }
 }
 
+/// Build the ordered list of locations to search for the sideterm
+/// configuration file, highest precedence first.
+fn config_path_possibilities(
+    home_dir: &Path,
+    config_dirs: &[PathBuf],
+    exe_dir: Option<PathBuf>,
+    env_file: Option<PathBuf>,
+    override_file: Option<PathBuf>,
+) -> Vec<PathPossibility> {
+    let mut paths = vec![PathPossibility::optional(home_dir.join(".sideterm.lua"))];
+    for dir in config_dirs {
+        paths.push(PathPossibility::optional(dir.join("sideterm.lua")));
+    }
+
+    if let Some(exe_dir) = exe_dir {
+        // Portable configuration alongside the executable
+        paths.insert(0, PathPossibility::optional(exe_dir.join("sideterm.lua")));
+    }
+    if let Some(path) = env_file {
+        paths.insert(0, PathPossibility::required(path));
+    }
+    if let Some(path) = override_file {
+        paths.insert(0, PathPossibility::required(path));
+    }
+    paths
+}
+
+/// Ordered list of locations where an upstream wezterm configuration
+/// may live; used to offer migration when no sideterm config exists.
+fn legacy_config_candidates(
+    home_dir: &Path,
+    legacy_dirs: &[PathBuf],
+    exe_dir: Option<PathBuf>,
+) -> Vec<PathBuf> {
+    let mut paths = vec![];
+    if let Some(exe_dir) = exe_dir {
+        paths.push(exe_dir.join("wezterm.lua"));
+    }
+    paths.push(home_dir.join(".wezterm.lua"));
+    for dir in legacy_dirs {
+        paths.push(dir.join("wezterm.lua"));
+    }
+    paths
+}
+
 /// Behavior when the program spawned by wezterm terminates
 #[derive(Debug, FromDynamic, ToDynamic, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExitBehavior {
@@ -2270,6 +2342,72 @@ fn default_colr_rasterizer() -> FontRasterizerSelection {
 mod test {
     use super::*;
     use mlua::FromLua;
+
+    #[test]
+    fn config_path_ordering() {
+        let home = PathBuf::from("/home/user");
+        let dirs = vec![PathBuf::from("/home/user/.config/sideterm")];
+
+        let paths = config_path_possibilities(&home, &dirs, None, None, None);
+        let names: Vec<_> = paths
+            .iter()
+            .map(|p| (p.path.clone(), p.is_required))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                (PathBuf::from("/home/user/.sideterm.lua"), false),
+                (
+                    PathBuf::from("/home/user/.config/sideterm/sideterm.lua"),
+                    false
+                ),
+            ]
+        );
+
+        // exe dir takes precedence over home/config dirs
+        let paths =
+            config_path_possibilities(&home, &dirs, Some(PathBuf::from("/portable")), None, None);
+        assert_eq!(paths[0].path, PathBuf::from("/portable/sideterm.lua"));
+        assert!(!paths[0].is_required);
+
+        // env file outranks exe dir and is required
+        let paths = config_path_possibilities(
+            &home,
+            &dirs,
+            Some(PathBuf::from("/portable")),
+            Some(PathBuf::from("/tmp/env.lua")),
+            None,
+        );
+        assert_eq!(paths[0].path, PathBuf::from("/tmp/env.lua"));
+        assert!(paths[0].is_required);
+
+        // explicit override outranks everything and is required
+        let paths = config_path_possibilities(
+            &home,
+            &dirs,
+            Some(PathBuf::from("/portable")),
+            Some(PathBuf::from("/tmp/env.lua")),
+            Some(PathBuf::from("/tmp/override.lua")),
+        );
+        assert_eq!(paths[0].path, PathBuf::from("/tmp/override.lua"));
+        assert!(paths[0].is_required);
+    }
+
+    #[test]
+    fn legacy_candidates_prefer_portable_location() {
+        let home = PathBuf::from("/home/user");
+        let dirs = vec![PathBuf::from("/home/user/.config/wezterm")];
+
+        let paths = legacy_config_candidates(&home, &dirs, Some(PathBuf::from("/portable")));
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("/portable/wezterm.lua"),
+                PathBuf::from("/home/user/.wezterm.lua"),
+                PathBuf::from("/home/user/.config/wezterm/wezterm.lua"),
+            ]
+        );
+    }
 
     #[test]
     fn parses_workspaces_config_section() {
