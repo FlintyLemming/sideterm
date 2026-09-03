@@ -1128,7 +1128,8 @@ impl Config {
             if let Some(path) = &legacy {
                 log::warn!(
                     "No sideterm configuration found, but a pre-existing wezterm \
-                     configuration exists at {}; consider copying it to ~/.sideterm.lua",
+                     configuration exists at {}; consider copying it to \
+                     ~/.config/sideterm/sideterm.lua",
                     path.display()
                 );
             }

@@ -869,8 +869,8 @@ return config
 
 /// If no sideterm configuration file exists but a pre-existing wezterm
 /// configuration was detected, ask the user whether to migrate it.
-/// Answering either way creates ~/.sideterm.lua (a copy, or a fresh
-/// stub) so the question is only asked once.
+/// Answering either way creates ~/.config/sideterm/sideterm.lua (a copy,
+/// or a fresh stub) so the question is only asked once either way.
 fn maybe_offer_legacy_config_migration() {
     let Some(legacy_path) = config::legacy_config_path() else {
         return;
@@ -882,7 +882,14 @@ fn maybe_offer_legacy_config_migration() {
         // wrap much narrower than that to keep the text on screen.
         const WRAP: usize = 44;
 
-        let target = config::HOME_DIR.join(".sideterm.lua");
+        // The primary config directory; put the config in a directory
+        // (rather than ~/.sideterm.lua) so that color schemes and lua
+        // modules can live alongside it, mirroring wezterm's layout.
+        let config_dir = config::CONFIG_DIRS
+            .first()
+            .cloned()
+            .unwrap_or_else(|| config::HOME_DIR.join(".config").join("sideterm"));
+        let target = config_dir.join("sideterm.lua");
 
         let ui = mux::connui::ConnectionUI::new_with_no_close_delay();
         ui.title("SideTerm Configuration");
@@ -911,7 +918,9 @@ fn maybe_offer_legacy_config_migration() {
 
         match answer.as_deref() {
             Ok("y") | Ok("yes") => {
-                if let Err(err) = std::fs::copy(&legacy_path, &target) {
+                let result = std::fs::create_dir_all(&config_dir)
+                    .and_then(|_| std::fs::copy(&legacy_path, &target).map(|_| ()));
+                if let Err(err) = result {
                     ui.output_str(&format!(
                         "\r\nFailed to copy the configuration: {err:#}\r\n"
                     ));
@@ -932,7 +941,9 @@ fn maybe_offer_legacy_config_migration() {
                 ));
             }
             Ok(_) => {
-                if let Err(err) = std::fs::write(&target, DEFAULT_CONFIG_STUB) {
+                let result = std::fs::create_dir_all(&config_dir)
+                    .and_then(|_| std::fs::write(&target, DEFAULT_CONFIG_STUB));
+                if let Err(err) = result {
                     ui.output_str(&format!(
                         "\r\nFailed to write {}: {err:#}\r\n",
                         target.display()
