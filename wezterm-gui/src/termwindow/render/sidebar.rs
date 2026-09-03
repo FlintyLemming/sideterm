@@ -1,139 +1,42 @@
-use crate::quad::TripleLayerQuadAllocator;
-use crate::sidebar::{SidebarItem, SidebarState};
-use crate::termwindow::render::RenderScreenLineParams;
-use crate::termwindow::{UIItem, UIItemType};
-use finl_unicode::grapheme_clusters::Graphemes;
-use mux::renderable::RenderableDimensions;
-use termwiz::cell::{unicode_column_width, CellAttributes, Intensity};
-use termwiz::color::{ColorSpec, SrgbaTuple};
-use termwiz::surface::SEQ_ZERO;
-use wezterm_term::Line;
-use window::color::LinearRgba;
-
-fn truncate_to_width(text: &str, width: usize) -> String {
-    let mut out = String::new();
-    let mut used = 0;
-    for g in Graphemes::new(text) {
-        let w = unicode_column_width(g, None).max(1);
-        if used + w > width {
-            break;
-        }
-        out.push_str(g);
-        used += w;
-    }
-    out
-}
-
-fn styled_line(text: &str, fg: SrgbaTuple, width: usize, bold: bool) -> Line {
-    let mut attrs = CellAttributes::default();
-    attrs.set_foreground(ColorSpec::TrueColor(fg));
-    if bold {
-        attrs.set_intensity(Intensity::Bold);
-    }
-    let text = truncate_to_width(text, width);
-    let padded = format!("{text:<width$}");
-    crate::tabbar::parse_status_text(&padded, attrs)
-}
+use crate::sidebar::{
+    fitting_rows, style_for_row, RowGeometry, SidebarItem, SidebarState, EDGE_PAD_H, EDGE_PAD_V,
+    ROW_GAP, ROW_PAD_H, ROW_PAD_V,
+};
+use crate::termwindow::box_model::*;
+use crate::termwindow::render::corners::*;
+use crate::termwindow::UIItemType;
+use crate::utilsprites::RenderMetrics;
+use config::{Dimension, DimensionContext};
 
 impl crate::TermWindow {
-    /// Render one line of sidebar/menu chrome: a single-row
-    /// render_screen_line plus its UIItem hit rect.
-    #[allow(clippy::too_many_arguments)]
-    fn paint_chrome_line(
-        &mut self,
-        line: &Line,
-        item_type: UIItemType,
-        default_bg: LinearRgba,
-        left: f32,
-        top: f32,
-        pixel_width: f32,
-        cols: usize,
-        layers: &mut TripleLayerQuadAllocator,
-    ) -> anyhow::Result<()> {
-        let palette = self.palette().clone();
-        let cell_height = self.render_metrics.cell_size.height as f32;
-        let window_is_transparent =
-            !self.window_background.is_empty() || self.config.window_background_opacity != 1.0;
-        let gl_state = self.render_state.as_ref().unwrap();
-        let white_space = gl_state.util_sprites.white_space.texture_coords();
-        let filled_box = gl_state.util_sprites.filled_box.texture_coords();
-        self.render_screen_line(
-            RenderScreenLineParams {
-                top_pixel_y: top,
-                left_pixel_x: left,
-                pixel_width,
-                stable_line_idx: None,
-                line,
-                selection: 0..0,
-                cursor: &Default::default(),
-                palette: &palette,
-                dims: &RenderableDimensions {
-                    cols,
-                    physical_top: 0,
-                    scrollback_rows: 0,
-                    scrollback_top: 0,
-                    viewport_rows: 1,
-                    dpi: self.terminal_size.dpi,
-                    pixel_height: cell_height as usize,
-                    pixel_width: pixel_width as usize,
-                    reverse_video: false,
-                },
-                config: &self.config,
-                cursor_border_color: LinearRgba::default(),
-                foreground: palette.foreground.to_linear(),
-                pane: None,
-                is_active: true,
-                selection_fg: LinearRgba::default(),
-                selection_bg: LinearRgba::default(),
-                cursor_fg: LinearRgba::default(),
-                cursor_bg: LinearRgba::default(),
-                cursor_is_default_color: true,
-                white_space,
-                filled_box,
-                window_is_transparent,
-                default_bg,
-                style: None,
-                font: None,
-                use_pixel_positioning: self.config.experimental_pixel_positioning,
-                render_metrics: self.render_metrics,
-                shape_key: None,
-                password_input: false,
-            },
-            layers,
-        )?;
-        self.ui_items.push(UIItem {
-            x: left as usize,
-            y: top as usize,
-            width: pixel_width as usize,
-            height: cell_height as usize,
-            item_type,
-        });
-        Ok(())
-    }
+    /// Build the sidebar as a box-model element tree — rounded "pill"
+    /// rows shaped in the title font, the same machinery the fancy tab
+    /// bar uses — and compute its layout. The result is cached in
+    /// `sidebar_element`; `invalidate_sidebar` drops both caches.
+    pub fn build_sidebar_element(&self) -> anyhow::Result<ComputedElement> {
+        let font = self.fonts.title_font()?;
+        let metrics = RenderMetrics::with_font_metrics(&font.metrics());
+        let cell_h = metrics.cell_size.height as f32;
+        let cell_w = metrics.cell_size.width as f32;
 
-    pub fn paint_sidebar(&mut self, layers: &mut TripleLayerQuadAllocator) -> anyhow::Result<()> {
-        if self.sidebar.is_none() {
-            let palette = self.palette().clone();
-            self.sidebar
-                .replace(SidebarState::new(&self.config, &palette));
-        }
-        let sidebar = self.sidebar.as_ref().unwrap().clone();
+        let sidebar = self.sidebar.as_ref().unwrap();
         let colors = sidebar.colors;
 
         let border = self.get_os_border();
         let sidebar_width = self.sidebar_pixel_width();
-        let cell_height = self.render_metrics.cell_size.height as f32;
         // Start below the tab bar when it is at the top, so the two
         // never overlap.
-        let mut y = border.top.get() as f32
+        let top = border.top.get() as f32
             + if self.show_tab_bar && !self.config.tab_bar_at_bottom {
                 self.tab_bar_pixel_height()?
             } else {
                 0.
             };
-        let x = border.left.get() as f32;
         let bottom = self.dimensions.pixel_height as f32 - border.bottom.get() as f32;
-        let width_cells = self.config.sidebar_width;
+        let available = (bottom - top).max(0.);
+
+        let geom = RowGeometry::from_cell_height(cell_h);
+        let fit = fitting_rows(&sidebar.rows, available, &geom);
 
         let window_is_transparent =
             !self.window_background.is_empty() || self.config.window_background_opacity != 1.0;
@@ -143,130 +46,150 @@ impl crate::TermWindow {
             self.config.text_background_opacity
         };
 
-        for row in &sidebar.rows {
-            if y + cell_height > bottom {
-                break;
-            }
-            let hovered =
-                row.item != SidebarItem::None && self.sidebar_hover.as_ref() == Some(&row.item);
-            let bg_srgb = if hovered {
-                colors.hover_bg
-            } else if row.is_active {
-                colors.active_bg
-            } else {
-                colors.background
-            };
-            let fg_srgb = if hovered {
-                colors.hover_fg
-            } else {
-                match &row.item {
-                    SidebarItem::NewButton => colors.foreground,
-                    _ => {
-                        if row.is_active {
-                            colors.active_fg
-                        } else if row.is_open {
-                            colors.foreground
-                        } else {
-                            colors.inactive_fg
-                        }
-                    }
-                }
-            };
-            let bg = bg_srgb.to_linear().mul_alpha(bg_alpha);
+        // Pill rows span the full width between the container's
+        // horizontal padding: strip width minus edge padding, row
+        // padding and the 1px border on each side.
+        let row_min_width =
+            (sidebar_width - 2. * (EDGE_PAD_H + ROW_PAD_H) * cell_w - 2.).max(0.);
 
-            let row_y = y;
-            let row_height = cell_height * if row.subtitle.is_some() { 2. } else { 1. };
-            let visible_height = row_height.min(bottom - row_y).max(0.);
+        let corner = |poly: &'static [crate::customglyph::Poly]| SizedPoly {
+            width: Dimension::Cells(0.5),
+            height: Dimension::Cells(0.5),
+            poly,
+        };
 
-            // Full-row background block (spans the subtitle line too)
-            self.filled_rectangle(
-                layers,
-                0,
-                euclid::rect(x, row_y, sidebar_width, visible_height),
-                bg,
-            )?;
-            // Active indicator: 3px bar along the left edge. The 1-cell
-            // text padding below keeps glyphs clear of it.
-            if row.is_active {
-                self.filled_rectangle(
-                    layers,
-                    0,
-                    euclid::rect(x, row_y, 3., visible_height),
-                    colors.active_indicator.to_linear(),
-                )?;
-            }
+        let mut row_eles = vec![];
+        for row in sidebar.rows.iter().take(fit) {
+            let style = style_for_row(row, &colors);
+            let bg = style.bg.to_linear().mul_alpha(bg_alpha);
+            let hover_bg = style.hover_bg.to_linear().mul_alpha(bg_alpha);
 
-            let title = styled_line(
-                &format!(" {}", row.title),
-                fg_srgb,
-                width_cells,
-                row.is_active,
-            );
-            self.paint_chrome_line(
-                &title,
-                UIItemType::Sidebar(row.item.clone()),
-                bg,
-                x,
-                y,
-                sidebar_width,
-                width_cells,
-                layers,
-            )?;
-            y += cell_height;
+            let mut kids = vec![
+                Element::new(&font, ElementContent::Text(row.title.clone()))
+                    .display(DisplayType::Block),
+            ];
             if let Some(subtitle) = &row.subtitle {
-                if y + cell_height > bottom {
-                    break;
-                }
-                let subtitle = styled_line(
-                    &format!("   {subtitle}"),
-                    colors.subtitle_fg,
-                    width_cells,
-                    false,
+                kids.push(
+                    Element::new(&font, ElementContent::Text(subtitle.clone()))
+                        .display(DisplayType::Block)
+                        .colors(ElementColors {
+                            text: colors.subtitle_fg.to_linear().into(),
+                            ..ElementColors::default()
+                        }),
                 );
-                self.paint_chrome_line(
-                    &subtitle,
-                    UIItemType::Sidebar(row.item.clone()),
-                    bg,
-                    x,
-                    y,
-                    sidebar_width,
-                    width_cells,
-                    layers,
-                )?;
-                y += cell_height;
             }
+
+            row_eles.push(
+                Element::new(&font, ElementContent::Children(kids))
+                    .display(DisplayType::Block)
+                    .item_type(UIItemType::Sidebar(row.item.clone()))
+                    .min_width(Some(Dimension::Pixels(row_min_width)))
+                    .margin(BoxDimension {
+                        left: Dimension::Cells(0.),
+                        right: Dimension::Cells(0.),
+                        top: Dimension::Cells(0.),
+                        bottom: Dimension::Cells(ROW_GAP),
+                    })
+                    .padding(BoxDimension {
+                        left: Dimension::Cells(ROW_PAD_H),
+                        right: Dimension::Cells(ROW_PAD_H),
+                        top: Dimension::Cells(ROW_PAD_V),
+                        bottom: Dimension::Cells(ROW_PAD_V),
+                    })
+                    // The border doubles as the corner fill color, so it
+                    // must match the background (same trick as tabs).
+                    .border(BoxDimension::new(Dimension::Pixels(1.)))
+                    .border_corners(Some(Corners {
+                        top_left: corner(TOP_LEFT_ROUNDED_CORNER),
+                        top_right: corner(TOP_RIGHT_ROUNDED_CORNER),
+                        bottom_left: corner(BOTTOM_LEFT_ROUNDED_CORNER),
+                        bottom_right: corner(BOTTOM_RIGHT_ROUNDED_CORNER),
+                    }))
+                    .colors(ElementColors {
+                        border: BorderColor::new(bg),
+                        bg: bg.into(),
+                        text: style.fg.to_linear().into(),
+                    })
+                    .hover_colors(Some(ElementColors {
+                        border: BorderColor::new(hover_bg),
+                        bg: hover_bg.into(),
+                        text: style.hover_fg.to_linear().into(),
+                    })),
+            );
         }
 
-        // Fill the rest of the strip with the default background so the
-        // terminal's padding doesn't peek through below the last row.
-        let blank = Line::from_text(
-            &" ".repeat(width_cells),
-            &CellAttributes::default(),
-            SEQ_ZERO,
-            None,
-        );
-        let blank_bg = colors.background.to_linear().mul_alpha(bg_alpha);
-        while y + cell_height <= bottom {
-            self.paint_chrome_line(
-                &blank,
-                UIItemType::Sidebar(SidebarItem::None),
-                blank_bg,
-                x,
-                y,
-                sidebar_width,
-                width_cells,
-                layers,
-            )?;
-            y += cell_height;
+        let container = Element::new(&font, ElementContent::Children(row_eles))
+            .display(DisplayType::Block)
+            // Clicks on the strip between/below rows must not fall
+            // through to the terminal.
+            .item_type(UIItemType::Sidebar(SidebarItem::None))
+            .min_width(Some(Dimension::Pixels(sidebar_width)))
+            .min_height(Some(Dimension::Pixels(available)))
+            .padding(BoxDimension {
+                left: Dimension::Cells(EDGE_PAD_H),
+                right: Dimension::Cells(EDGE_PAD_H),
+                top: Dimension::Cells(EDGE_PAD_V),
+                bottom: Dimension::Cells(EDGE_PAD_V),
+            })
+            .colors(ElementColors {
+                bg: colors.background.to_linear().mul_alpha(bg_alpha).into(),
+                ..ElementColors::default()
+            });
+
+        let mut computed = self.compute_element(
+            &LayoutContext {
+                height: DimensionContext {
+                    dpi: self.dimensions.dpi as f32,
+                    pixel_max: self.dimensions.pixel_height as f32,
+                    pixel_cell: cell_h,
+                },
+                width: DimensionContext {
+                    dpi: self.dimensions.dpi as f32,
+                    pixel_max: self.dimensions.pixel_width as f32,
+                    pixel_cell: cell_w,
+                },
+                bounds: euclid::rect(0., 0., sidebar_width, available),
+                metrics: &metrics,
+                gl_state: self.render_state.as_ref().unwrap(),
+                // Chrome layer, like the fancy tab bar; above the
+                // panes, below modals (100). The sidebar menu paints
+                // into the same layer after the sidebar, so its quads
+                // land on top.
+                zindex: 10,
+            },
+            &container,
+        )?;
+
+        computed.translate(euclid::vec2(border.left.get() as f32, top));
+        Ok(computed)
+    }
+
+    pub fn paint_sidebar(&mut self) -> anyhow::Result<()> {
+        if self.sidebar.is_none() {
+            let palette = self.palette().clone();
+            self.sidebar
+                .replace(SidebarState::new(&self.config, &palette));
+        }
+        if self.sidebar_element.is_none() {
+            let element = self.build_sidebar_element()?;
+            self.sidebar_element.replace(element);
         }
 
+        let mut items = self.sidebar_element.as_ref().unwrap().ui_items();
+        self.ui_items.append(&mut items);
+
+        let gl_state = self.render_state.as_ref().unwrap();
+        let computed = self.sidebar_element.as_ref().unwrap();
+        self.render_element(computed, gl_state, None)?;
         Ok(())
     }
 
-    pub fn paint_sidebar_menu(
-        &mut self,
-        layers: &mut TripleLayerQuadAllocator,
-    ) -> anyhow::Result<()> {
+    /// Paint the right-click context menu as a box-model element tree
+    /// in the sidebar's visual language: a rounded card holding one
+    /// pill row per action, with hover driven by `hover_colors`.
+    /// Rebuilt each paint; menus are transient and the glyph caches
+    /// make this cheap, so there's no element cache to invalidate.
+    pub fn paint_sidebar_menu(&mut self) -> anyhow::Result<()> {
         let menu = match self.sidebar_menu.clone() {
             Some(menu) => menu,
             None => return Ok(()),
@@ -289,81 +212,144 @@ impl crate::TermWindow {
             None => return Ok(()),
         };
 
-        let cell_width = self.render_metrics.cell_size.width as f32;
-        let cell_height = self.render_metrics.cell_size.height as f32;
+        let font = self.fonts.title_font()?;
+        let metrics = RenderMetrics::with_font_metrics(&font.metrics());
+        let cell_w = metrics.cell_size.width as f32;
+        let win_w = self.dimensions.pixel_width as f32;
+        let win_h = self.dimensions.pixel_height as f32;
 
-        // Menu colors inherit the sidebar's background/foreground/hover
-        // (spec §2); the border gets its own color.
-        let label_cells = crate::sidebar_menu::MENU_ITEMS
-            .iter()
-            .map(|(_, label)| unicode_column_width(label, None))
-            .max()
-            .unwrap_or(0);
-        let menu_cols = label_cells + 2; // one cell of padding on each side
-        let menu_width = menu_cols as f32 * cell_width;
-        let menu_height = crate::sidebar_menu::MENU_ITEMS.len() as f32 * cell_height;
-
-        // Keep the menu fully inside the window: clamp the anchor when
-        // it would overflow the right/bottom edge (spec §3).
-        let max_x = (self.dimensions.pixel_width as f32 - menu_width).max(0.);
-        let max_y = (self.dimensions.pixel_height as f32 - menu_height).max(0.);
-        let mx = menu.x.clamp(0., max_x);
-        let my = menu.y.clamp(0., max_y);
-
-        // 1px border plus an opaque body so the pane below doesn't
-        // bleed through.
-        self.filled_rectangle(
-            layers,
-            0,
-            euclid::rect(mx - 1., my - 1., menu_width + 2., menu_height + 2.),
-            colors.menu_border.to_linear(),
-        )?;
-        self.filled_rectangle(
-            layers,
-            0,
-            euclid::rect(mx, my, menu_width, menu_height),
-            colors.background.to_linear(),
-        )?;
-
-        if let Some(hovered) = menu.hovered {
-            self.filled_rectangle(
-                layers,
-                0,
-                euclid::rect(
-                    mx,
-                    my + hovered as f32 * cell_height,
-                    menu_width,
-                    cell_height,
-                ),
-                colors.hover_bg.to_linear(),
-            )?;
+        fn layout_context<'a>(
+            term_window: &'a crate::TermWindow,
+            metrics: &'a RenderMetrics,
+            win_w: f32,
+            win_h: f32,
+            cell_w: f32,
+            zindex: i8,
+        ) -> LayoutContext<'a> {
+            LayoutContext {
+                height: DimensionContext {
+                    dpi: term_window.dimensions.dpi as f32,
+                    pixel_max: win_h,
+                    pixel_cell: metrics.cell_size.height as f32,
+                },
+                width: DimensionContext {
+                    dpi: term_window.dimensions.dpi as f32,
+                    pixel_max: win_w,
+                    pixel_cell: cell_w,
+                },
+                bounds: euclid::rect(0., 0., win_w, win_h),
+                metrics,
+                gl_state: term_window.render_state.as_ref().unwrap(),
+                zindex,
+            }
         }
 
+        // Probe-measure each label so every row floors at exactly the
+        // widest label's shaped width (cell-width estimates inflate
+        // badly for the proportional title font).
+        let mut row_min_width: f32 = 0.;
+        for (_, label) in crate::sidebar_menu::MENU_ITEMS {
+            let probe = Element::new(&font, ElementContent::Text(label.to_string()));
+            let w = self
+                .compute_element(&layout_context(self, &metrics, win_w, win_h, cell_w, 10), &probe)?
+                .bounds
+                .width();
+            row_min_width = row_min_width.max(w);
+        }
+
+        let corner = |poly: &'static [crate::customglyph::Poly]| SizedPoly {
+            width: Dimension::Cells(0.5),
+            height: Dimension::Cells(0.5),
+            poly,
+        };
+        let rounded = || Corners {
+            top_left: corner(TOP_LEFT_ROUNDED_CORNER),
+            top_right: corner(TOP_RIGHT_ROUNDED_CORNER),
+            bottom_left: corner(BOTTOM_LEFT_ROUNDED_CORNER),
+            bottom_right: corner(BOTTOM_RIGHT_ROUNDED_CORNER),
+        };
+
+        let bg = colors.background.to_linear();
+        let mut row_eles = vec![];
         for (idx, (_, label)) in crate::sidebar_menu::MENU_ITEMS.iter().enumerate() {
-            let top = my + idx as f32 * cell_height;
-            let is_hovered = menu.hovered == Some(idx);
-            let fg = if is_hovered {
-                colors.hover_fg
-            } else {
-                colors.foreground
-            };
-            let default_bg = if is_hovered {
-                colors.hover_bg.to_linear()
-            } else {
-                colors.background.to_linear()
-            };
-            let line = styled_line(&format!(" {label} "), fg, menu_cols, false);
-            self.paint_chrome_line(
-                &line,
-                UIItemType::SidebarMenuItem(idx),
-                default_bg,
-                mx,
-                top,
-                menu_width,
-                menu_cols,
-                layers,
-            )?;
+            row_eles.push(
+                Element::new(&font, ElementContent::Text(label.to_string()))
+                    .display(DisplayType::Block)
+                    .item_type(UIItemType::SidebarMenuItem(idx))
+                    .min_width(Some(Dimension::Pixels(row_min_width)))
+                    .margin(BoxDimension {
+                        left: Dimension::Cells(0.),
+                        right: Dimension::Cells(0.),
+                        top: Dimension::Cells(0.),
+                        bottom: Dimension::Cells(ROW_GAP),
+                    })
+                    .padding(BoxDimension {
+                        left: Dimension::Cells(ROW_PAD_H),
+                        right: Dimension::Cells(ROW_PAD_H),
+                        top: Dimension::Cells(ROW_PAD_V),
+                        bottom: Dimension::Cells(ROW_PAD_V),
+                    })
+                    // The border doubles as the corner fill color, so
+                    // it must match the background (same trick as the
+                    // sidebar rows).
+                    .border(BoxDimension::new(Dimension::Pixels(1.)))
+                    .border_corners(Some(rounded()))
+                    .colors(ElementColors {
+                        border: BorderColor::new(bg),
+                        bg: bg.into(),
+                        text: colors.foreground.to_linear().into(),
+                    })
+                    .hover_colors(Some(ElementColors {
+                        border: BorderColor::new(colors.hover_bg.to_linear()),
+                        bg: colors.hover_bg.to_linear().into(),
+                        text: colors.hover_fg.to_linear().into(),
+                    })),
+            );
         }
+
+        let card = Element::new(&font, ElementContent::Children(row_eles))
+            .display(DisplayType::Block)
+            // Clicks on the menu's padding must neither dispatch an
+            // action nor count as click-outside-to-dismiss.
+            .item_type(UIItemType::SidebarMenuChrome)
+            .padding(BoxDimension {
+                left: Dimension::Cells(EDGE_PAD_H),
+                right: Dimension::Cells(EDGE_PAD_H),
+                top: Dimension::Cells(EDGE_PAD_V),
+                bottom: Dimension::Cells(EDGE_PAD_V),
+            })
+            .border(BoxDimension::new(Dimension::Pixels(1.)))
+            .border_corners(Some(rounded()))
+            .colors(ElementColors {
+                border: BorderColor::new(colors.menu_border.to_linear()),
+                // Opaque so the pane below doesn't bleed through.
+                bg: bg.into(),
+                text: colors.foreground.to_linear().into(),
+            });
+
+        // Lay out at the origin, then clamp the anchor so the menu
+        // stays fully inside the window (spec §3). Chrome layer, same
+        // as the sidebar, which paints into it first — the menu lands
+        // on top.
+        let mut computed = self.compute_element(
+            &layout_context(self, &metrics, win_w, win_h, cell_w, 10),
+            &card,
+        )?;
+
+        let menu_w = computed.bounds.width();
+        let menu_h = computed.bounds.height();
+        let mx = menu.x.clamp(0., (win_w - menu_w).max(0.));
+        let my = menu.y.clamp(0., (win_h - menu_h).max(0.));
+        computed.translate(euclid::vec2(
+            mx - computed.bounds.min_x(),
+            my - computed.bounds.min_y(),
+        ));
+
+        let mut items = computed.ui_items();
+        self.ui_items.append(&mut items);
+
+        let gl_state = self.render_state.as_ref().unwrap();
+        self.render_element(&computed, gl_state, None)?;
         Ok(())
     }
 }

@@ -42,6 +42,7 @@ impl crate::TermWindow {
                             break 'pass;
                         }
                         self.invalidate_fancy_tab_bar();
+                        self.invalidate_sidebar();
                         self.invalidate_modal();
                     }
                     Err(err) => {
@@ -65,6 +66,7 @@ impl crate::TermWindow {
                             self.recreate_texture_atlas(Some(size))
                         };
                         self.invalidate_fancy_tab_bar();
+                        self.invalidate_sidebar();
                         self.invalidate_modal();
 
                         if let Err(err) = result {
@@ -92,6 +94,7 @@ impl crate::TermWindow {
                         }
                     } else if err.root_cause().downcast_ref::<ClearShapeCache>().is_some() {
                         self.invalidate_fancy_tab_bar();
+                        self.invalidate_sidebar();
                         self.invalidate_modal();
                         self.shape_generation += 1;
                         self.shape_cache.borrow_mut().clear();
@@ -269,12 +272,12 @@ impl crate::TermWindow {
         }
 
         if self.show_sidebar {
-            self.paint_sidebar(&mut layers).context("paint_sidebar")?;
+            self.paint_sidebar().context("paint_sidebar")?;
         }
 
         // Drawn right after the sidebar so it overlays both the sidebar
         // and the terminal panes; a no-op when no menu is open.
-        self.paint_sidebar_menu(&mut layers)
+        self.paint_sidebar_menu()
             .context("paint_sidebar_menu")?;
 
         if self.show_tab_bar {

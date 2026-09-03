@@ -39,37 +39,50 @@ impl super::TermWindow {
             UIItemType::TabBar(_) => {
                 self.update_title_post_status();
             }
-            UIItemType::Sidebar(ref item) => {
-                if self.sidebar_hover.as_ref() == Some(item) {
-                    self.sidebar_hover = None;
-                }
-            }
             UIItemType::CloseTab(_)
             | UIItemType::AboveScrollThumb
             | UIItemType::BelowScrollThumb
             | UIItemType::ScrollThumb
             | UIItemType::Split(_)
-            | UIItemType::SidebarMenuItem(_) => {}
+            | UIItemType::Sidebar(_)
+            | UIItemType::SidebarMenuItem(_)
+            | UIItemType::SidebarMenuChrome
+            | UIItemType::SidebarDialog
+            | UIItemType::SidebarDialogButton(_) => {}
         }
     }
 
     fn enter_ui_item(&mut self, item: &UIItem) {
         match item.item_type {
-            UIItemType::TabBar(_) => {}
-            UIItemType::Sidebar(ref item) => {
-                self.sidebar_hover = Some(item.clone());
-            }
-            UIItemType::CloseTab(_)
+            UIItemType::TabBar(_)
+            | UIItemType::Sidebar(_)
+            | UIItemType::CloseTab(_)
             | UIItemType::AboveScrollThumb
             | UIItemType::BelowScrollThumb
             | UIItemType::ScrollThumb
             | UIItemType::Split(_)
-            | UIItemType::SidebarMenuItem(_) => {}
+            | UIItemType::SidebarMenuItem(_)
+            | UIItemType::SidebarMenuChrome
+            | UIItemType::SidebarDialog
+            | UIItemType::SidebarDialogButton(_) => {}
         }
     }
 
     pub fn mouse_event_impl(&mut self, event: MouseEvent, context: &dyn WindowOps) {
         log::trace!("{:?}", event);
+
+        // A modal that captures the mouse (e.g. the sidebar dialog)
+        // owns all mouse input while it is active.
+        if let Some(modal) = self.get_modal() {
+            if modal.captures_mouse() {
+                self.current_mouse_event.replace(event.clone());
+                if let Err(err) = modal.mouse_event(&event, self) {
+                    log::error!("modal mouse_event: {err:#}");
+                }
+                context.set_cursor(Some(CursorIcon::Default));
+                return;
+            }
+        }
 
         // While the sidebar context menu is open it owns the mouse:
         // hover tracking, click-to-dispatch, click-outside-to-dismiss,
@@ -265,7 +278,6 @@ impl super::TermWindow {
     }
 
     pub fn mouse_leave_impl(&mut self, context: &dyn WindowOps) {
-        self.sidebar_hover = None;
         self.current_mouse_event = None;
         self.update_title();
         context.set_cursor(Some(CursorIcon::Default));
@@ -404,7 +416,10 @@ impl super::TermWindow {
                 self.mouse_event_close_tab(idx, event, context);
             }
             UIItemType::Sidebar(item) => self.mouse_event_sidebar(item.clone(), event, context),
-            UIItemType::SidebarMenuItem(_) => {}
+            UIItemType::SidebarMenuItem(_)
+            | UIItemType::SidebarMenuChrome
+            | UIItemType::SidebarDialog
+            | UIItemType::SidebarDialogButton(_) => {}
         }
     }
 
@@ -654,10 +669,17 @@ impl super::TermWindow {
                     Some(UIItemType::SidebarMenuItem(idx)) => {
                         if let Some(menu) = self.sidebar_menu.take() {
                             let action = crate::sidebar_menu::MENU_ITEMS[idx].0;
-                            self.dispatch_sidebar_menu_action(menu.workspace, action);
+                            self.dispatch_sidebar_menu_action(
+                                menu.workspace,
+                                action,
+                                (menu.x, menu.y),
+                            );
                         }
                         context.invalidate();
                     }
+                    // Clicks on the menu's padding are swallowed, not
+                    // treated as click-outside.
+                    Some(UIItemType::SidebarMenuChrome) => {}
                     // Press outside the menu: close and swallow the
                     // click (standard menu behavior)
                     _ => self.close_sidebar_menu(),
@@ -670,6 +692,7 @@ impl super::TermWindow {
                     Some(UIItemType::Sidebar(crate::sidebar::SidebarItem::Entry(name))) => {
                         self.show_sidebar_menu(name, event.coords.x as f32, event.coords.y as f32);
                     }
+                    Some(UIItemType::SidebarMenuChrome) => {}
                     _ => self.close_sidebar_menu(),
                 }
             }

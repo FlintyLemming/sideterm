@@ -11,7 +11,7 @@ use config::keyassignment::{KeyAssignment, PaneSelectArguments, PaneSelectMode};
 use config::Dimension;
 use mux::Mux;
 use std::cell::{Ref, RefCell};
-use wezterm_term::{KeyCode, KeyModifiers, MouseEvent};
+use wezterm_term::{KeyCode, KeyModifiers};
 
 pub struct PaneSelector {
     element: RefCell<Option<Vec<ComputedElement>>>,
@@ -232,10 +232,6 @@ impl Modal for PaneSelector {
         _term_window: &mut TermWindow,
     ) -> bool {
         false
-    }
-
-    fn mouse_event(&self, _event: MouseEvent, _term_window: &mut TermWindow) -> anyhow::Result<()> {
-        Ok(())
     }
 
     fn key_down(

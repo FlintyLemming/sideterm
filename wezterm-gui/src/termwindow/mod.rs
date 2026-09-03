@@ -81,6 +81,7 @@ mod prevcursor;
 pub mod render;
 pub mod resize;
 mod selection;
+pub mod sidebar_dialog;
 pub mod spawn;
 pub mod webgpu;
 use crate::spawn::SpawnWhere;
@@ -162,6 +163,12 @@ pub enum UIItemType {
     Sidebar(crate::sidebar::SidebarItem),
     /// Index into sidebar_menu::MENU_ITEMS
     SidebarMenuItem(usize),
+    /// The context menu's container; clicks on it are swallowed
+    /// rather than treated as click-outside-to-dismiss.
+    SidebarMenuChrome,
+    /// The sidebar dialog card body (see termwindow/sidebar_dialog.rs).
+    SidebarDialog,
+    SidebarDialogButton(crate::termwindow::sidebar_dialog::DialogButton),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -397,7 +404,7 @@ pub struct TermWindow {
     show_sidebar: bool,
     sidebar_toggled: bool,
     sidebar: Option<crate::sidebar::SidebarState>,
-    sidebar_hover: Option<crate::sidebar::SidebarItem>,
+    sidebar_element: Option<box_model::ComputedElement>,
     sidebar_menu: Option<crate::sidebar_menu::SidebarMenuState>,
     show_scroll_bar: bool,
     tab_bar: TabBarState,
@@ -733,7 +740,7 @@ impl TermWindow {
             show_sidebar: config.enable_sidebar,
             sidebar_toggled: false,
             sidebar: None,
-            sidebar_hover: None,
+            sidebar_element: None,
             sidebar_menu: None,
             show_scroll_bar: config.enable_scroll_bar,
             tab_bar: TabBarState::default(),
@@ -1802,14 +1809,14 @@ impl TermWindow {
         }
     }
 
-    /// Drop the cached sidebar model so it is rebuilt on next paint.
+    /// Drop the cached sidebar model and computed element so they are
+    /// rebuilt on next paint.
     pub fn invalidate_sidebar(&mut self) {
         self.sidebar.take();
+        self.sidebar_element.take();
     }
 
     pub fn show_sidebar_menu(&mut self, workspace: String, x: f32, y: f32) {
-        // The row highlight is superseded by the menu
-        self.sidebar_hover = None;
         self.sidebar_menu
             .replace(crate::sidebar_menu::SidebarMenuState {
                 workspace,
@@ -1830,22 +1837,39 @@ impl TermWindow {
         }
     }
 
+    /// The sidebar's resolved colors, from the live sidebar state if
+    /// it exists, otherwise freshly resolved from the config.
+    fn sidebar_colors(&mut self) -> crate::sidebar::ResolvedColors {
+        match self.sidebar.as_ref() {
+            Some(sidebar) => sidebar.colors,
+            None => {
+                let palette = self.palette().clone();
+                crate::sidebar::resolve_colors(&self.config, &palette)
+            }
+        }
+    }
+
     fn dispatch_sidebar_menu_action(
         &mut self,
         workspace: String,
         action: crate::sidebar_menu::SidebarMenuAction,
+        anchor: (f32, f32),
     ) {
         use crate::sidebar_menu::SidebarMenuAction::*;
         match action {
             MoveUp => Mux::get().move_workspace_in_sidebar(&workspace, -1),
             MoveDown => Mux::get().move_workspace_in_sidebar(&workspace, 1),
             Rename => {
+                let colors = self.sidebar_colors();
                 let cb_workspace = workspace.clone();
-                self.prompt_for_workspace_value(
-                    format!("Rename workspace `{workspace}`"),
-                    "New name: ".to_string(),
+                let dialog = crate::termwindow::sidebar_dialog::SidebarDialog::prompt(
+                    "Rename workspace".to_string(),
+                    format!("Enter a new name for `{workspace}`"),
                     Some(workspace.clone()),
-                    move |line| {
+                    "Save".to_string(),
+                    anchor,
+                    colors,
+                    move |term_window, line| {
                         if let Some(name) = line {
                             let name = name.trim();
                             // Empty / unchanged names are not applied
@@ -1853,20 +1877,26 @@ impl TermWindow {
                                 Mux::get().rename_workspace(&cb_workspace, name);
                             }
                         }
+                        term_window.invalidate_sidebar();
                     },
                 );
+                self.set_modal(std::rc::Rc::new(dialog));
             }
             SetDefaultCwd => {
                 let current = Mux::get().resolve_workspace_defaults(&workspace).0;
+                let colors = self.sidebar_colors();
                 let cb_workspace = workspace.clone();
-                self.prompt_for_workspace_value(
+                let dialog = crate::termwindow::sidebar_dialog::SidebarDialog::prompt(
+                    "Set default directory".to_string(),
                     format!(
-                        "Default directory for `{workspace}`\n\
-                         Empty line clears the runtime override."
+                        "Default directory for `{workspace}`.\n\
+                         An empty value clears the runtime override."
                     ),
-                    "cwd: ".to_string(),
                     current.map(|p| p.to_string_lossy().to_string()),
-                    move |line| {
+                    "Save".to_string(),
+                    anchor,
+                    colors,
+                    move |term_window, line| {
                         if let Some(line) = line {
                             let mux = Mux::get();
                             let mut meta = mux
@@ -1877,21 +1907,27 @@ impl TermWindow {
                                 (!trimmed.is_empty()).then(|| std::path::PathBuf::from(trimmed));
                             mux.set_workspace_metadata(&cb_workspace, meta);
                         }
+                        term_window.invalidate_sidebar();
                     },
                 );
+                self.set_modal(std::rc::Rc::new(dialog));
             }
             SetDefaultCommand => {
                 let current = Mux::get().resolve_workspace_defaults(&workspace).1;
+                let colors = self.sidebar_colors();
                 let cb_workspace = workspace.clone();
-                self.prompt_for_workspace_value(
+                let dialog = crate::termwindow::sidebar_dialog::SidebarDialog::prompt(
+                    "Set default command".to_string(),
                     format!(
-                        "Default command for `{workspace}`\n\
-                         Injected into the shell of each new tab. \
-                         Empty line clears the runtime override."
+                        "Default command for `{workspace}`, injected into the \
+                         shell of each new tab.\n\
+                         An empty value clears the runtime override."
                     ),
-                    "command: ".to_string(),
                     current,
-                    move |line| {
+                    "Save".to_string(),
+                    anchor,
+                    colors,
+                    move |term_window, line| {
                         if let Some(line) = line {
                             let mux = Mux::get();
                             let mut meta = mux
@@ -1902,33 +1938,31 @@ impl TermWindow {
                                 (!trimmed.is_empty()).then(|| trimmed.to_string());
                             mux.set_workspace_metadata(&cb_workspace, meta);
                         }
+                        term_window.invalidate_sidebar();
                     },
                 );
+                self.set_modal(std::rc::Rc::new(dialog));
             }
             Remove => {
-                let mux = Mux::get();
-                let tab = match mux.get_active_tab_for_window(self.mux_window_id) {
-                    Some(tab) => tab,
-                    None => return,
-                };
-                let message = format!(
-                    "Remove `{workspace}` from the sidebar?\n\
-                     The workspace itself keeps running."
-                );
+                let colors = self.sidebar_colors();
                 let cb_workspace = workspace.clone();
-                let (overlay, future) = start_overlay(self, &tab, move |_tab_id, term| {
-                    crate::overlay::confirm::show_confirmation_overlay_with_callback(
-                        term,
-                        &message,
-                        move |confirmed| {
-                            if confirmed {
-                                Mux::get().hide_workspace_in_sidebar(&cb_workspace);
-                            }
-                        },
-                    )
-                });
-                self.assign_overlay(tab.tab_id(), overlay);
-                promise::spawn::spawn(future).detach();
+                let dialog = crate::termwindow::sidebar_dialog::SidebarDialog::confirm(
+                    "Remove workspace".to_string(),
+                    format!(
+                        "Remove `{workspace}` from the sidebar?\n\
+                         The workspace itself keeps running."
+                    ),
+                    "Remove".to_string(),
+                    anchor,
+                    colors,
+                    move |term_window, confirmed| {
+                        if confirmed {
+                            Mux::get().hide_workspace_in_sidebar(&cb_workspace);
+                        }
+                        term_window.invalidate_sidebar();
+                    },
+                );
+                self.set_modal(std::rc::Rc::new(dialog));
             }
         }
         self.invalidate_sidebar();
@@ -2231,6 +2265,7 @@ impl TermWindow {
             let new_sidebar = crate::sidebar::SidebarState::new(&self.config, &palette);
             if self.sidebar.as_ref() != Some(&new_sidebar) {
                 self.sidebar = Some(new_sidebar);
+                self.sidebar_element.take();
                 if let Some(window) = self.window.as_ref() {
                     window.invalidate();
                 }
@@ -2569,37 +2604,6 @@ impl TermWindow {
 
         let (overlay, future) = start_overlay(self, &tab, move |_tab_id, term| {
             crate::overlay::confirm::show_confirmation_overlay(term, args, gui_win, pane)
-        });
-        self.assign_overlay(tab.tab_id(), overlay);
-        promise::spawn::spawn(future).detach();
-    }
-
-    /// Open a line-input prompt overlay; the callback runs on the
-    /// overlay thread, so it may call mux APIs directly but must use
-    /// window.notify to touch TermWindow state.
-    fn prompt_for_workspace_value<F>(
-        &mut self,
-        description: String,
-        prompt: String,
-        initial: Option<String>,
-        callback: F,
-    ) where
-        F: FnOnce(Option<String>) + Send + 'static,
-    {
-        let mux = Mux::get();
-        let tab = match mux.get_active_tab_for_window(self.mux_window_id) {
-            Some(tab) => tab,
-            None => return,
-        };
-
-        let (overlay, future) = start_overlay(self, &tab, move |_tab_id, term| {
-            crate::overlay::prompt::show_line_prompt_overlay_with_callback(
-                term,
-                &description,
-                &prompt,
-                initial.as_deref(),
-                callback,
-            )
         });
         self.assign_overlay(tab.tab_id(), overlay);
         promise::spawn::spawn(future).detach();

@@ -3,7 +3,7 @@ use crate::TermWindow;
 use config::keyassignment::KeyAssignment;
 use downcast_rs::{impl_downcast, Downcast};
 use std::cell::Ref;
-use wezterm_term::{KeyCode, KeyModifiers, MouseEvent};
+use wezterm_term::{KeyCode, KeyModifiers};
 
 pub trait Modal: Downcast {
     fn perform_assignment(
@@ -13,7 +13,23 @@ pub trait Modal: Downcast {
     ) -> bool {
         false
     }
-    fn mouse_event(&self, event: MouseEvent, term_window: &mut TermWindow) -> anyhow::Result<()>;
+    /// Whether the modal owns the mouse while it is active. When true,
+    /// mouseevent.rs routes every window mouse event to `mouse_event`
+    /// instead of the pane/tab bar/sidebar handling. Defaults to
+    /// false, preserving the click-through behavior of the older
+    /// modals (palette, selectors).
+    fn captures_mouse(&self) -> bool {
+        false
+    }
+    /// Mouse event with pixel coordinates, dispatched only when
+    /// `captures_mouse` is true.
+    fn mouse_event(
+        &self,
+        _event: &::window::MouseEvent,
+        _term_window: &mut TermWindow,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn key_down(
         &self,
         key: KeyCode,

@@ -44,7 +44,7 @@ pub struct ResolvedColors {
 }
 
 /// Lighten dark colors / darken light colors by `amount` (0..1).
-fn shift_towards_contrast(color: SrgbaTuple, amount: f32) -> SrgbaTuple {
+pub(crate) fn shift_towards_contrast(color: SrgbaTuple, amount: f32) -> SrgbaTuple {
     let SrgbaTuple(r, g, b, a) = color;
     let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     if luminance < 0.5 {
@@ -59,7 +59,7 @@ fn shift_towards_contrast(color: SrgbaTuple, amount: f32) -> SrgbaTuple {
     }
 }
 
-fn resolve_colors(config: &ConfigHandle, palette: &ColorPalette) -> ResolvedColors {
+pub(crate) fn resolve_colors(config: &ConfigHandle, palette: &ColorPalette) -> ResolvedColors {
     let empty = SidebarColors::default();
     let sc = config.resolved_palette.sidebar.as_ref().unwrap_or(&empty);
 
@@ -67,7 +67,9 @@ fn resolve_colors(config: &ConfigHandle, palette: &ColorPalette) -> ResolvedColo
     let foreground: SrgbaTuple = sc.foreground.map(Into::into).unwrap_or(palette.foreground);
     let (active_bg, active_fg) = match &sc.active {
         Some(active) => (active.bg_color.into(), active.fg_color.into()),
-        None => (background, palette.foreground),
+        // Default to a gently contrasted fill so the active pill is
+        // visible without configuration.
+        None => (shift_towards_contrast(background, 0.15), palette.foreground),
     };
     let inactive_fg: SrgbaTuple = sc
         .inactive_foreground
@@ -99,6 +101,89 @@ fn resolve_colors(config: &ConfigHandle, palette: &ColorPalette) -> ResolvedColo
         active_indicator,
         menu_border,
     }
+}
+
+/// Vertical rhythm of a pill row, in title-font cells. Shared by the
+/// element painter and the row-fitting math so the two can't drift.
+pub const ROW_PAD_V: f32 = 0.2;
+pub const ROW_GAP: f32 = 0.25;
+pub const EDGE_PAD_V: f32 = 0.5;
+/// Horizontal padding of a row / of the strip edges, in cells.
+pub const ROW_PAD_H: f32 = 0.5;
+pub const EDGE_PAD_H: f32 = 0.5;
+
+/// Colors for one row in each interaction state; the element painter
+/// maps these onto ElementColors / hover_colors.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RowStyle {
+    pub bg: SrgbaTuple,
+    pub fg: SrgbaTuple,
+    pub hover_bg: SrgbaTuple,
+    pub hover_fg: SrgbaTuple,
+}
+
+pub fn style_for_row(row: &SidebarRow, colors: &ResolvedColors) -> RowStyle {
+    let bg = if row.is_active {
+        colors.active_bg
+    } else {
+        colors.background
+    };
+    let fg = match &row.item {
+        SidebarItem::NewButton => colors.foreground,
+        _ if row.is_active => colors.active_fg,
+        _ if row.is_open => colors.foreground,
+        _ => colors.inactive_fg,
+    };
+    RowStyle {
+        bg,
+        fg,
+        hover_bg: colors.hover_bg,
+        hover_fg: colors.hover_fg,
+    }
+}
+
+/// Vertical geometry of the sidebar in pixels, derived from the
+/// title-font cell height the element painter lays out with.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RowGeometry {
+    /// Height of one text line.
+    pub line: f32,
+    /// Padding above+below the text inside a row.
+    pub pad_v: f32,
+    /// Gap between rows.
+    pub gap: f32,
+    /// Padding at the top/bottom edge of the strip (per side).
+    pub edge_v: f32,
+}
+
+impl RowGeometry {
+    pub fn from_cell_height(cell_height: f32) -> Self {
+        Self {
+            line: cell_height,
+            pad_v: 2. * ROW_PAD_V * cell_height,
+            gap: ROW_GAP * cell_height,
+            edge_v: EDGE_PAD_V * cell_height,
+        }
+    }
+}
+
+pub fn row_height(has_subtitle: bool, geom: &RowGeometry) -> f32 {
+    geom.pad_v + geom.line * if has_subtitle { 2. } else { 1. }
+}
+
+/// How many rows (counting from the front) fit in `available` pixels.
+pub fn fitting_rows(rows: &[SidebarRow], available: f32, geom: &RowGeometry) -> usize {
+    let mut y = geom.edge_v;
+    let mut count = 0;
+    for row in rows {
+        let h = row_height(row.subtitle.is_some(), geom);
+        if y + h > available - geom.edge_v {
+            break;
+        }
+        y += h + geom.gap;
+        count += 1;
+    }
+    count
 }
 
 /// Build the display rows from mux entries; pure so it can be unit
@@ -190,5 +275,90 @@ mod test {
         assert!(light.0 < 0.9 && light.1 < 0.9 && light.2 < 0.9);
         // Alpha is preserved
         assert_eq!(dark.3, 1.);
+    }
+
+    fn test_colors() -> ResolvedColors {
+        ResolvedColors {
+            background: SrgbaTuple(0.0, 0.0, 0.0, 1.0),
+            foreground: SrgbaTuple(0.9, 0.9, 0.9, 1.0),
+            active_bg: SrgbaTuple(0.2, 0.4, 0.8, 1.0),
+            active_fg: SrgbaTuple(1.0, 1.0, 1.0, 1.0),
+            inactive_fg: SrgbaTuple(0.5, 0.5, 0.5, 1.0),
+            subtitle_fg: SrgbaTuple(0.4, 0.4, 0.4, 1.0),
+            hover_bg: SrgbaTuple(0.1, 0.1, 0.2, 1.0),
+            hover_fg: SrgbaTuple(0.95, 0.95, 0.95, 1.0),
+            active_indicator: SrgbaTuple(1.0, 1.0, 1.0, 1.0),
+            menu_border: SrgbaTuple(0.3, 0.3, 0.3, 1.0),
+        }
+    }
+
+    fn row(item: SidebarItem, is_active: bool, is_open: bool) -> SidebarRow {
+        SidebarRow {
+            item,
+            title: "ws".to_string(),
+            subtitle: None,
+            is_active,
+            is_open,
+        }
+    }
+
+    #[test]
+    fn style_for_active_row_uses_active_colors() {
+        let style = style_for_row(&row(SidebarItem::Entry("a".into()), true, true), &test_colors());
+        assert_eq!(style.bg, test_colors().active_bg);
+        assert_eq!(style.fg, test_colors().active_fg);
+    }
+
+    #[test]
+    fn style_for_open_row_uses_background_and_foreground() {
+        let style = style_for_row(&row(SidebarItem::Entry("a".into()), false, true), &test_colors());
+        assert_eq!(style.bg, test_colors().background);
+        assert_eq!(style.fg, test_colors().foreground);
+    }
+
+    #[test]
+    fn style_for_closed_row_uses_inactive_fg() {
+        let style = style_for_row(&row(SidebarItem::Entry("a".into()), false, false), &test_colors());
+        assert_eq!(style.bg, test_colors().background);
+        assert_eq!(style.fg, test_colors().inactive_fg);
+    }
+
+    #[test]
+    fn style_for_new_button_uses_foreground() {
+        let style = style_for_row(&row(SidebarItem::NewButton, false, false), &test_colors());
+        assert_eq!(style.bg, test_colors().background);
+        assert_eq!(style.fg, test_colors().foreground);
+    }
+
+    #[test]
+    fn style_always_carries_hover_colors() {
+        let colors = test_colors();
+        for item in [SidebarItem::NewButton, SidebarItem::Entry("a".into())] {
+            for (is_active, is_open) in [(false, false), (true, true)] {
+                let style = style_for_row(&row(item.clone(), is_active, is_open), &colors);
+                assert_eq!(style.hover_bg, colors.hover_bg);
+                assert_eq!(style.hover_fg, colors.hover_fg);
+            }
+        }
+    }
+
+    #[test]
+    fn row_height_adds_a_line_for_subtitle() {
+        let geom = RowGeometry::from_cell_height(10.);
+        assert_eq!(row_height(false, &geom), 10. + 2. * ROW_PAD_V * 10.);
+        assert_eq!(row_height(true, &geom), 20. + 2. * ROW_PAD_V * 10.);
+    }
+
+    #[test]
+    fn fitting_rows_stops_at_first_row_that_overflows() {
+        // cell height 10: rows are 14, 24 (subtitle), 14 px tall,
+        // gap 2.5, edge 5.
+        let geom = RowGeometry::from_cell_height(10.);
+        let rows = build_rows("api", &entries());
+        // available 60 fits the first two rows (5+14+2.5+24 = 45.5) but
+        // the third would end at 62 > 55.
+        assert_eq!(fitting_rows(&rows, 60., &geom), 2);
+        assert_eq!(fitting_rows(&rows, 70., &geom), 3);
+        assert_eq!(fitting_rows(&rows, 10., &geom), 0);
     }
 }
