@@ -410,15 +410,25 @@ impl crate::TermWindow {
 
         let content = ElementContent::Children(children);
 
+        // The sidebar owns the full left edge; the bar lives to its
+        // right (bar_x is the plain left border when the sidebar is
+        // hidden).
+        let border = self.get_os_border();
+        let bar_x = if self.show_sidebar {
+            self.tab_bar_left()
+        } else {
+            border.left.get() as f32
+        };
+        let bar_width =
+            self.dimensions.pixel_width as f32 - bar_x - border.right.get() as f32;
+
         let tabs = Element::new(&font, content)
             .display(DisplayType::Block)
             .item_type(UIItemType::TabBar(TabBarItem::None))
-            .min_width(Some(Dimension::Pixels(self.dimensions.pixel_width as f32)))
+            .min_width(Some(Dimension::Pixels(bar_width)))
             .min_height(Some(Dimension::Pixels(tab_bar_height)))
             .vertical_align(VerticalAlign::Bottom)
             .colors(bar_colors);
-
-        let border = self.get_os_border();
 
         let mut computed = self.compute_element(
             &LayoutContext {
@@ -432,12 +442,7 @@ impl crate::TermWindow {
                     pixel_max: self.dimensions.pixel_width as f32,
                     pixel_cell: metrics.cell_size.width as f32,
                 },
-                bounds: euclid::rect(
-                    border.left.get() as f32,
-                    0.,
-                    self.dimensions.pixel_width as f32 - (border.left + border.right).get() as f32,
-                    tab_bar_height,
-                ),
+                bounds: euclid::rect(bar_x, 0., bar_width, tab_bar_height),
                 metrics: &metrics,
                 gl_state: self.render_state.as_ref().unwrap(),
                 zindex: 10,

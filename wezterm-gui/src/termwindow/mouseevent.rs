@@ -150,8 +150,6 @@ impl super::TermWindow {
             x_pixel_offset = x_pixel_offset.max(0) % self.render_metrics.cell_size.width;
         }
 
-        self.last_mouse_coords = (x, y);
-
         let mut capture_mouse = false;
 
         match event.kind {

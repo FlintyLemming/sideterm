@@ -35,9 +35,14 @@ impl crate::TermWindow {
         } else {
             border.top.get() as f32
         };
+        // The sidebar owns the full left edge; the bar lives to its
+        // right (bar_x is 0 when the sidebar is hidden).
+        let bar_x = self.tab_bar_left();
+        let bar_width = self.dimensions.pixel_width as f32 - bar_x;
 
         // Register the tab bar location
         self.ui_items.append(&mut self.tab_bar.compute_ui_items(
+            bar_x as usize,
             tab_bar_y as usize,
             self.render_metrics.cell_size.height as usize,
             self.render_metrics.cell_size.width as usize,
@@ -60,16 +65,15 @@ impl crate::TermWindow {
         self.render_screen_line(
             RenderScreenLineParams {
                 top_pixel_y: tab_bar_y,
-                left_pixel_x: 0.,
-                pixel_width: self.dimensions.pixel_width as f32,
+                left_pixel_x: bar_x,
+                pixel_width: bar_width,
                 stable_line_idx: None,
                 line: self.tab_bar.line(),
                 selection: 0..0,
                 cursor: &Default::default(),
                 palette: &palette,
                 dims: &RenderableDimensions {
-                    cols: self.dimensions.pixel_width
-                        / self.render_metrics.cell_size.width as usize,
+                    cols: bar_width as usize / self.render_metrics.cell_size.width as usize,
                     physical_top: 0,
                     scrollback_rows: 0,
                     scrollback_top: 0,

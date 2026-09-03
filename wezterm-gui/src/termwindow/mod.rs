@@ -415,7 +415,6 @@ pub struct TermWindow {
     /// Tracks whether the current mouse-down event is part of click-focus.
     /// If so, we ignore mouse events until released
     is_click_to_focus_window: bool,
-    last_mouse_coords: (usize, i64),
     window_drag_position: Option<MouseEvent>,
     current_mouse_event: Option<MouseEvent>,
     prev_cursor: PrevCursorPos,
@@ -747,7 +746,6 @@ impl TermWindow {
             fancy_tab_bar: None,
             right_status: String::new(),
             left_status: String::new(),
-            last_mouse_coords: (0, -1),
             window_drag_position: None,
             current_mouse_event: None,
             current_modifier_and_leds: Default::default(),
@@ -1767,6 +1765,18 @@ impl TermWindow {
         self.config.sidebar_width as f32 * self.render_metrics.cell_size.width as f32
     }
 
+    /// Absolute x pixel where the tab bar begins: the sidebar owns
+    /// the full left edge of the window, so when it is shown the bar
+    /// starts to its right. 0 when the sidebar is hidden, preserving
+    /// the classic bar's edge-to-edge behavior.
+    pub fn tab_bar_left(&self) -> f32 {
+        if self.show_sidebar {
+            self.get_os_border().left.get() as f32 + self.sidebar_pixel_width()
+        } else {
+            0.
+        }
+    }
+
     pub fn compute_show_sidebar(&self) -> bool {
         // ToggleSidebar flips the configured value for this window:
         // with enable_sidebar=false (the default) one toggle turns the
@@ -2229,18 +2239,30 @@ impl TermWindow {
 
         let tab_bar_height = self.tab_bar_pixel_height().unwrap_or(0.);
 
+        // The bar starts to the right of the sidebar (tab_bar_left is
+        // 0 when the sidebar is hidden); hover coordinates are
+        // relative to the bar's left edge.
+        let tab_bar_left = self.tab_bar_left();
         let hovering_in_tab_bar = match &self.current_mouse_event {
             Some(event) => {
+                let mouse_x = event.coords.x as f32;
                 let mouse_y = event.coords.y as f32;
-                mouse_y >= tab_bar_y as f32 && mouse_y < tab_bar_y as f32 + tab_bar_height
+                mouse_x >= tab_bar_left
+                    && mouse_y >= tab_bar_y as f32
+                    && mouse_y < tab_bar_y as f32 + tab_bar_height
             }
             None => false,
         };
 
         let new_tab_bar = TabBarState::new(
-            self.dimensions.pixel_width / self.render_metrics.cell_size.width as usize,
+            ((self.dimensions.pixel_width as f32 - tab_bar_left)
+                / self.render_metrics.cell_size.width as f32) as usize,
             if hovering_in_tab_bar {
-                Some(self.last_mouse_coords.0)
+                self.current_mouse_event.as_ref().map(|event| {
+                    ((event.coords.x as f32 - tab_bar_left).max(0.)
+                        / self.render_metrics.cell_size.width as f32)
+                        .round() as usize
+                })
             } else {
                 None
             },

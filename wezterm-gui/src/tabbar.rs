@@ -703,12 +703,18 @@ impl TabBarState {
         }
     }
 
-    pub fn compute_ui_items(&self, y: usize, cell_height: usize, cell_width: usize) -> Vec<UIItem> {
+    pub fn compute_ui_items(
+        &self,
+        x: usize,
+        y: usize,
+        cell_height: usize,
+        cell_width: usize,
+    ) -> Vec<UIItem> {
         let mut items = vec![];
 
         for entry in self.items.iter() {
             items.push(UIItem {
-                x: entry.x * cell_width,
+                x: x + entry.x * cell_width,
                 width: entry.width * cell_width,
                 y,
                 height: cell_height,

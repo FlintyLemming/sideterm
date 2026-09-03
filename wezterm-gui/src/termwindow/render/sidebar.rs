@@ -24,14 +24,9 @@ impl crate::TermWindow {
 
         let border = self.get_os_border();
         let sidebar_width = self.sidebar_pixel_width();
-        // Start below the tab bar when it is at the top, so the two
-        // never overlap.
-        let top = border.top.get() as f32
-            + if self.show_tab_bar && !self.config.tab_bar_at_bottom {
-                self.tab_bar_pixel_height()?
-            } else {
-                0.
-            };
+        // The sidebar owns the full left edge, top border to bottom
+        // border; the tab bar lives to its right.
+        let top = border.top.get() as f32;
         let bottom = self.dimensions.pixel_height as f32 - border.bottom.get() as f32;
         let available = (bottom - top).max(0.);
 
