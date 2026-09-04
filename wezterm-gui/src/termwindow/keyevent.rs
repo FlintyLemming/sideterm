@@ -597,7 +597,7 @@ impl super::TermWindow {
     }
 
     pub fn key_event_impl(&mut self, window_key: KeyEvent, context: &dyn WindowOps) {
-        if self.sidebar_menu.is_some() {
+        if self.sidebar_menu.is_some() || self.sidebar_profile_menu.is_some() {
             self.close_sidebar_menu();
             // Escape is swallowed entirely; any other key dismisses
             // the menu and is then delivered to the pane as usual.

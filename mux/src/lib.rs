@@ -723,6 +723,16 @@ impl Mux {
         )
     }
 
+    /// The workspace's default launch profile, from runtime metadata
+    /// only (never persisted to the Lua config).
+    pub fn resolve_workspace_profile(
+        &self,
+        workspace: &str,
+    ) -> Option<config::keyassignment::SpawnCommand> {
+        let metadata = self.workspace_metadata.read().get(workspace).cloned();
+        workspace_defaults::resolve_workspace_profile_impl(metadata.as_ref())
+    }
+
     /// Total number of tabs across all windows in a workspace.
     pub fn tab_count_for_workspace(&self, workspace: &str) -> usize {
         self.windows

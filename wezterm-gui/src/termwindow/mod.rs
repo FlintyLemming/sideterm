@@ -166,6 +166,8 @@ pub enum UIItemType {
     /// The context menu's container; clicks on it are swallowed
     /// rather than treated as click-outside-to-dismiss.
     SidebarMenuChrome,
+    /// Index into SidebarProfileMenuState::entries
+    SidebarProfileMenuItem(usize),
     /// The sidebar dialog card body (see termwindow/sidebar_dialog.rs).
     SidebarDialog,
     SidebarDialogButton(crate::termwindow::sidebar_dialog::DialogButton),
@@ -406,6 +408,7 @@ pub struct TermWindow {
     sidebar: Option<crate::sidebar::SidebarState>,
     sidebar_element: Option<box_model::ComputedElement>,
     sidebar_menu: Option<crate::sidebar_menu::SidebarMenuState>,
+    sidebar_profile_menu: Option<crate::sidebar_menu::SidebarProfileMenuState>,
     show_scroll_bar: bool,
     tab_bar: TabBarState,
     fancy_tab_bar: Option<box_model::ComputedElement>,
@@ -741,6 +744,7 @@ impl TermWindow {
             sidebar: None,
             sidebar_element: None,
             sidebar_menu: None,
+            sidebar_profile_menu: None,
             show_scroll_bar: config.enable_scroll_bar,
             tab_bar: TabBarState::default(),
             fancy_tab_bar: None,
@@ -1827,6 +1831,7 @@ impl TermWindow {
     }
 
     pub fn show_sidebar_menu(&mut self, workspace: String, x: f32, y: f32) {
+        self.sidebar_profile_menu.take();
         self.sidebar_menu
             .replace(crate::sidebar_menu::SidebarMenuState {
                 workspace,
@@ -1839,12 +1844,54 @@ impl TermWindow {
         }
     }
 
+    /// Close the context menu and its profile flyout together; they
+    /// are never meant to outlive each other.
     pub fn close_sidebar_menu(&mut self) {
-        if self.sidebar_menu.take().is_some() {
+        let closed =
+            self.sidebar_menu.take().is_some() || self.sidebar_profile_menu.take().is_some();
+        if closed {
             if let Some(window) = self.window.as_ref() {
                 window.invalidate();
             }
         }
+    }
+
+    /// Build the flyout entries for "Set default profile": a leading
+    /// "Default shell" row (clears the override), then the config's
+    /// launch_menu entries labeled the same way the launcher does.
+    fn profile_menu_entries() -> Vec<crate::sidebar_menu::ProfileMenuEntry> {
+        let mut entries = vec![crate::sidebar_menu::ProfileMenuEntry {
+            label: "Default shell".to_string(),
+            profile: None,
+        }];
+        for item in &config::configuration().launch_menu {
+            let label = match item.label.as_ref() {
+                Some(label) => label.to_string(),
+                None => match item.args.as_ref() {
+                    Some(args) => args.join(" "),
+                    None => "(default shell)".to_string(),
+                },
+            };
+            entries.push(crate::sidebar_menu::ProfileMenuEntry {
+                label,
+                profile: Some(item.clone()),
+            });
+        }
+        entries
+    }
+
+    /// Apply a flyout selection: set (or clear, for the "Default
+    /// shell" row) the workspace's runtime default profile.
+    fn set_workspace_profile(
+        &mut self,
+        workspace: &str,
+        profile: Option<config::keyassignment::SpawnCommand>,
+    ) {
+        let mux = Mux::get();
+        let mut meta = mux.get_workspace_metadata(workspace).unwrap_or_default();
+        meta.profile = profile;
+        mux.set_workspace_metadata(workspace, meta);
+        self.invalidate_sidebar();
     }
 
     /// The sidebar's resolved colors, from the live sidebar state if
@@ -1952,6 +1999,22 @@ impl TermWindow {
                     },
                 );
                 self.set_modal(std::rc::Rc::new(dialog));
+            }
+            SetDefaultProfile => {
+                // The main menu was already closed by the click
+                // routing; open the profile flyout at the same anchor.
+                let entries = Self::profile_menu_entries();
+                self.sidebar_profile_menu
+                    .replace(crate::sidebar_menu::SidebarProfileMenuState {
+                        workspace,
+                        x: anchor.0,
+                        y: anchor.1,
+                        hovered: None,
+                        entries,
+                    });
+                if let Some(window) = self.window.as_ref() {
+                    window.invalidate();
+                }
             }
             Remove => {
                 let colors = self.sidebar_colors();

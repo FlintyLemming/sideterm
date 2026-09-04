@@ -57,7 +57,18 @@ pub async fn spawn_command_internal(
         None => None,
     };
 
-    let cwd = if let Some(cwd) = spawn.cwd.as_ref() {
+    let workspace = mux.active_workspace().clone();
+
+    // A plain spawn (no explicit program) picks up the workspace's
+    // default launch profile, if one is set. The profile supplies the
+    // program; explicit spawn cwd still wins over the profile's cwd.
+    let overlay = mux::workspace_defaults::apply_workspace_profile(
+        spawn.args.as_deref(),
+        spawn.cwd.clone(),
+        mux.resolve_workspace_profile(&workspace).as_ref(),
+    );
+
+    let cwd = if let Some(cwd) = overlay.cwd.as_ref() {
         Some(cwd.to_str().map(|s| s.to_owned()).ok_or_else(|| {
             anyhow!(
                 "Domain::spawn requires that the cwd be unicode in {:?}",
@@ -69,33 +80,35 @@ pub async fn spawn_command_internal(
     };
 
     let cmd_builder = match (
-        spawn.args.as_ref(),
-        spawn.cwd.as_ref(),
-        spawn.set_environment_variables.is_empty(),
+        overlay.args.as_ref(),
+        overlay.cwd.as_ref(),
+        spawn.set_environment_variables.is_empty() && overlay.env.is_empty(),
     ) {
         (None, None, true) => None,
         _ => {
-            let mut builder = spawn
+            let mut builder = overlay
                 .args
                 .as_ref()
                 .map(|args| CommandBuilder::from_argv(args.iter().map(Into::into).collect()))
                 .unwrap_or_else(CommandBuilder::new_default_prog);
+            for (k, v) in overlay.env.iter() {
+                builder.env(k, v);
+            }
+            // Explicit spawn env wins over the profile's on conflicts
             for (k, v) in spawn.set_environment_variables.iter() {
                 builder.env(k, v);
             }
-            if let Some(cwd) = &spawn.cwd {
+            if let Some(cwd) = &overlay.cwd {
                 builder.cwd(cwd);
             }
             Some(builder)
         }
     };
 
-    let workspace = mux.active_workspace().clone();
-
     // The workspace default command is only injected into fresh
-    // interactive shells; an explicit `args` means the user asked
-    // for a specific program instead.
-    let inject_command = if spawn.args.is_none() {
+    // interactive shells; an explicit `args` (given directly or via
+    // the workspace profile) means a specific program runs instead.
+    let inject_command = if overlay.inject_default_command {
         mux.resolve_workspace_defaults(&workspace).1
     } else {
         None

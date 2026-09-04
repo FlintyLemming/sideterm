@@ -47,6 +47,7 @@ impl super::TermWindow {
             | UIItemType::Sidebar(_)
             | UIItemType::SidebarMenuItem(_)
             | UIItemType::SidebarMenuChrome
+            | UIItemType::SidebarProfileMenuItem(_)
             | UIItemType::SidebarDialog
             | UIItemType::SidebarDialogButton(_) => {}
         }
@@ -63,6 +64,7 @@ impl super::TermWindow {
             | UIItemType::Split(_)
             | UIItemType::SidebarMenuItem(_)
             | UIItemType::SidebarMenuChrome
+            | UIItemType::SidebarProfileMenuItem(_)
             | UIItemType::SidebarDialog
             | UIItemType::SidebarDialogButton(_) => {}
         }
@@ -84,10 +86,11 @@ impl super::TermWindow {
             }
         }
 
-        // While the sidebar context menu is open it owns the mouse:
-        // hover tracking, click-to-dispatch, click-outside-to-dismiss,
-        // and swallowing everything else so nothing leaks to the pane.
-        if self.sidebar_menu.is_some() {
+        // While the sidebar context menu (or its profile flyout) is
+        // open it owns the mouse: hover tracking, click-to-dispatch,
+        // click-outside-to-dismiss, and swallowing everything else so
+        // nothing leaks to the pane.
+        if self.sidebar_menu.is_some() || self.sidebar_profile_menu.is_some() {
             self.current_mouse_event.replace(event.clone());
             self.mouse_event_sidebar_menu(&event, context);
             return;
@@ -416,6 +419,7 @@ impl super::TermWindow {
             UIItemType::Sidebar(item) => self.mouse_event_sidebar(item.clone(), event, context),
             UIItemType::SidebarMenuItem(_)
             | UIItemType::SidebarMenuChrome
+            | UIItemType::SidebarProfileMenuItem(_)
             | UIItemType::SidebarDialog
             | UIItemType::SidebarDialogButton(_) => {}
         }
@@ -660,6 +664,19 @@ impl super::TermWindow {
                         context.invalidate();
                     }
                 }
+                let profile_hovered = match self.resolve_ui_item(event) {
+                    Some(item) => match item.item_type {
+                        UIItemType::SidebarProfileMenuItem(idx) => Some(idx),
+                        _ => None,
+                    },
+                    None => None,
+                };
+                if let Some(menu) = self.sidebar_profile_menu.as_mut() {
+                    if menu.hovered != profile_hovered {
+                        menu.hovered = profile_hovered;
+                        context.invalidate();
+                    }
+                }
             }
             WMEK::Press(MousePress::Left) => {
                 let hit = self.resolve_ui_item(event).map(|item| item.item_type);
@@ -672,6 +689,17 @@ impl super::TermWindow {
                                 action,
                                 (menu.x, menu.y),
                             );
+                        }
+                        context.invalidate();
+                    }
+                    Some(UIItemType::SidebarProfileMenuItem(idx)) => {
+                        if let Some(menu) = self.sidebar_profile_menu.take() {
+                            if let Some(entry) = menu.entries.get(idx) {
+                                self.set_workspace_profile(
+                                    &menu.workspace,
+                                    entry.profile.clone(),
+                                );
+                            }
                         }
                         context.invalidate();
                     }

@@ -202,6 +202,46 @@ impl crate::TermWindow {
             return Ok(());
         }
 
+        let labels: Vec<&str> = crate::sidebar_menu::MENU_ITEMS
+            .iter()
+            .map(|(_, label)| *label)
+            .collect();
+        self.paint_menu_card(&labels, (menu.x, menu.y), UIItemType::SidebarMenuItem)
+    }
+
+    /// Paint the "Set default profile" flyout: same card/row visual
+    /// language as the main context menu, with one row per launch_menu
+    /// entry plus a leading "Default shell" row.
+    pub fn paint_sidebar_profile_menu(&mut self) -> anyhow::Result<()> {
+        let menu = match self.sidebar_profile_menu.clone() {
+            Some(menu) => menu,
+            None => return Ok(()),
+        };
+
+        // Same ghost-entry guard as the main menu.
+        let still_listed = mux::Mux::get()
+            .compute_sidebar_entries()
+            .iter()
+            .any(|entry| entry.name == menu.workspace);
+        if !still_listed {
+            self.close_sidebar_menu();
+            return Ok(());
+        }
+
+        let labels: Vec<&str> = menu.entries.iter().map(|e| e.label.as_str()).collect();
+        self.paint_menu_card(&labels, (menu.x, menu.y), UIItemType::SidebarProfileMenuItem)
+    }
+
+    /// Shared painter for the sidebar's pop-up menus: one pill row per
+    /// label inside a rounded, 1px-outlined card, clamped to the
+    /// window. `item_type_of` maps a row index to its UIItemType so
+    /// input routing can tell the menus apart.
+    fn paint_menu_card(
+        &mut self,
+        labels: &[&str],
+        anchor: (f32, f32),
+        item_type_of: fn(usize) -> UIItemType,
+    ) -> anyhow::Result<()> {
         let colors = match self.sidebar.as_ref() {
             Some(sidebar) => sidebar.colors,
             None => return Ok(()),
@@ -243,7 +283,7 @@ impl crate::TermWindow {
         // widest label's shaped width (cell-width estimates inflate
         // badly for the proportional title font).
         let mut row_min_width: f32 = 0.;
-        for (_, label) in crate::sidebar_menu::MENU_ITEMS {
+        for label in labels {
             let probe = Element::new(&font, ElementContent::Text(label.to_string()));
             let w = self
                 .compute_element(&layout_context(self, &metrics, win_w, win_h, cell_w, 10), &probe)?
@@ -266,11 +306,11 @@ impl crate::TermWindow {
 
         let bg = colors.background.to_linear();
         let mut row_eles = vec![];
-        for (idx, (_, label)) in crate::sidebar_menu::MENU_ITEMS.iter().enumerate() {
+        for (idx, label) in labels.iter().enumerate() {
             row_eles.push(
                 Element::new(&font, ElementContent::Text(label.to_string()))
                     .display(DisplayType::Block)
-                    .item_type(UIItemType::SidebarMenuItem(idx))
+                    .item_type(item_type_of(idx))
                     .min_width(Some(Dimension::Pixels(row_min_width)))
                     .margin(BoxDimension {
                         left: Dimension::Cells(0.),
@@ -350,8 +390,8 @@ impl crate::TermWindow {
 
         let menu_w = computed.bounds.width();
         let menu_h = computed.bounds.height();
-        let mx = menu.x.clamp(0., (win_w - menu_w).max(0.));
-        let my = menu.y.clamp(0., (win_h - menu_h).max(0.));
+        let mx = anchor.0.clamp(0., (win_w - menu_w).max(0.));
+        let my = anchor.1.clamp(0., (win_h - menu_h).max(0.));
         computed.translate(euclid::vec2(
             mx - computed.bounds.min_x(),
             my - computed.bounds.min_y(),

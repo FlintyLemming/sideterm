@@ -279,6 +279,8 @@ impl crate::TermWindow {
         // and the terminal panes; a no-op when no menu is open.
         self.paint_sidebar_menu()
             .context("paint_sidebar_menu")?;
+        self.paint_sidebar_profile_menu()
+            .context("paint_sidebar_profile_menu")?;
 
         if self.show_tab_bar {
             self.paint_tab_bar(&mut layers).context("paint_tab_bar")?;

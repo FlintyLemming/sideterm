@@ -168,6 +168,7 @@ mod test {
             WorkspaceMetadata {
                 cwd: Some(PathBuf::from("E:/elsewhere")),
                 default_command: None,
+                profile: None,
             },
         );
         let entries =
