@@ -1900,14 +1900,19 @@ impl TermWindow {
     }
 
     /// Apply a flyout selection: set (or clear, for the "Default
-    /// shell" row) the workspace's runtime default profile.
+    /// shell" row) the workspace's runtime default profile. `label`
+    /// is the flyout row's display text, kept for the sidebar
+    /// subtitle; domain profiles display their bare domain name
+    /// instead, so their stored label is never shown.
     fn set_workspace_profile(
         &mut self,
         workspace: &str,
+        label: Option<String>,
         profile: Option<config::keyassignment::SpawnCommand>,
     ) {
         let mux = Mux::get();
         let mut meta = mux.get_workspace_metadata(workspace).unwrap_or_default();
+        meta.profile_label = if profile.is_some() { label } else { None };
         meta.profile = profile;
         mux.set_workspace_metadata(workspace, meta);
         self.invalidate_sidebar();

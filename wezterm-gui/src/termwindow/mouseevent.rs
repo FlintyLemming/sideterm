@@ -697,6 +697,7 @@ impl super::TermWindow {
                             if let Some(entry) = menu.entries.get(idx) {
                                 self.set_workspace_profile(
                                     &menu.workspace,
+                                    Some(entry.label.clone()),
                                     entry.profile.clone(),
                                 );
                             }

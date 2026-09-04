@@ -19,6 +19,10 @@ impl crate::TermWindow {
         let cell_h = metrics.cell_size.height as f32;
         let cell_w = metrics.cell_size.width as f32;
 
+        let subtitle_font = self.fonts.sidebar_subtitle_font()?;
+        let subtitle_metrics = RenderMetrics::with_font_metrics(&subtitle_font.metrics());
+        let subtitle_cell_h = subtitle_metrics.cell_size.height as f32;
+
         let sidebar = self.sidebar.as_ref().unwrap();
         let colors = sidebar.colors;
 
@@ -30,7 +34,7 @@ impl crate::TermWindow {
         let bottom = self.dimensions.pixel_height as f32 - border.bottom.get() as f32;
         let available = (bottom - top).max(0.);
 
-        let geom = RowGeometry::from_cell_height(cell_h);
+        let geom = RowGeometry::from_cell_heights(cell_h, subtitle_cell_h);
         let fit = fitting_rows(&sidebar.rows, available, &geom);
 
         let window_is_transparent =
@@ -63,9 +67,9 @@ impl crate::TermWindow {
                 Element::new(&font, ElementContent::Text(row.title.clone()))
                     .display(DisplayType::Block),
             ];
-            if let Some(subtitle) = &row.subtitle {
+            for line in &row.subtitle_lines {
                 kids.push(
-                    Element::new(&font, ElementContent::Text(subtitle.clone()))
+                    Element::new(&subtitle_font, ElementContent::Text(line.clone()))
                         .display(DisplayType::Block)
                         .colors(ElementColors {
                             text: colors.subtitle_fg.to_linear().into(),

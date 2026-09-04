@@ -1,7 +1,9 @@
 //! Sidebar entry model: merges configured workspaces with live mux
 //! workspaces and applies in-memory display overrides.
 
-use crate::workspace_defaults::{resolve_workspace_defaults_impl, WorkspaceMetadata};
+use crate::workspace_defaults::{
+    resolve_workspace_defaults_impl, workspace_profile_display, WorkspaceMetadata,
+};
 use config::WorkspaceEntry;
 use std::collections::{HashMap, HashSet};
 
@@ -11,9 +13,11 @@ pub struct SidebarEntry {
     /// `Some(n)` for a live workspace with `n` tabs;
     /// `None` for a configured-but-not-open workspace.
     pub tab_count: Option<usize>,
-    /// Basename of the effective default cwd, or the default command
-    /// when no cwd is set. `None` when the workspace has no defaults.
-    pub subtitle: Option<String>,
+    /// One line per configured default, in fixed order: directory
+    /// (basename), command, profile. Empty when the workspace has no
+    /// defaults. Each line carries a leading marker: `▸` directory,
+    /// `$` command, `◆` profile.
+    pub subtitle_lines: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -67,16 +71,23 @@ pub fn compute_sidebar_entries(
         .filter(|name| !overrides.hidden.contains(name))
         .map(|name| {
             let tab_count = live.iter().find(|(n, _)| n == &name).map(|(_, c)| *c);
+            let metadata = metadata.get(&name);
             let (cwd, command) =
-                resolve_workspace_defaults_impl(metadata.get(&name), config_entries, &name);
-            let subtitle = cwd
-                .as_ref()
-                .and_then(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
-                .or(command);
+                resolve_workspace_defaults_impl(metadata, config_entries, &name);
+            let mut subtitle_lines = Vec::new();
+            if let Some(base) = cwd.as_ref().and_then(|p| p.file_name()) {
+                subtitle_lines.push(format!("\u{25b8} {}", base.to_string_lossy()));
+            }
+            if let Some(command) = command {
+                subtitle_lines.push(format!("$ {command}"));
+            }
+            if let Some(profile) = workspace_profile_display(metadata) {
+                subtitle_lines.push(format!("\u{25c6} {profile}"));
+            }
             SidebarEntry {
                 name,
                 tab_count,
-                subtitle,
+                subtitle_lines,
             }
         })
         .collect()
@@ -104,6 +115,8 @@ pub fn move_in_order(current: &[String], order: &mut Vec<String>, name: &str, de
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::workspace_defaults::WorkspaceMetadata;
+    use config::keyassignment::{SpawnCommand, SpawnTabDomain};
     use std::path::PathBuf;
 
     fn config_entries() -> Vec<WorkspaceEntry> {
@@ -133,23 +146,26 @@ mod test {
         // configured but not open
         assert_eq!(entries[1].tab_count, None);
         // live but unconfigured: no subtitle
-        assert_eq!(entries[2].subtitle, None);
+        assert_eq!(entries[2].subtitle_lines, Vec::<String>::new());
     }
 
     #[test]
-    fn subtitle_is_cwd_basename() {
+    fn subtitle_shows_cwd_and_command_together() {
         let entries = compute_sidebar_entries(
             &config_entries(),
             &[],
             &HashMap::new(),
             &SidebarOverrides::default(),
         );
-        assert_eq!(entries[0].subtitle, Some("api".to_string()));
-        assert_eq!(entries[1].subtitle, None);
+        assert_eq!(
+            entries[0].subtitle_lines,
+            vec!["\u{25b8} api".to_string(), "$ npm run dev".to_string()]
+        );
+        assert_eq!(entries[1].subtitle_lines, Vec::<String>::new());
     }
 
     #[test]
-    fn subtitle_falls_back_to_command() {
+    fn subtitle_shows_command_without_cwd() {
         let config = vec![WorkspaceEntry {
             name: "srv".to_string(),
             cwd: None,
@@ -157,7 +173,7 @@ mod test {
         }];
         let entries =
             compute_sidebar_entries(&config, &[], &HashMap::new(), &SidebarOverrides::default());
-        assert_eq!(entries[0].subtitle, Some("npm run dev".to_string()));
+        assert_eq!(entries[0].subtitle_lines, vec!["$ npm run dev".to_string()]);
     }
 
     #[test]
@@ -167,13 +183,83 @@ mod test {
             "api".to_string(),
             WorkspaceMetadata {
                 cwd: Some(PathBuf::from("E:/elsewhere")),
-                default_command: None,
-                profile: None,
+                ..WorkspaceMetadata::default()
             },
         );
         let entries =
             compute_sidebar_entries(&config_entries(), &[], &metadata, &SidebarOverrides::default());
-        assert_eq!(entries[0].subtitle, Some("elsewhere".to_string()));
+        assert_eq!(
+            entries[0].subtitle_lines,
+            vec!["\u{25b8} elsewhere".to_string(), "$ npm run dev".to_string()]
+        );
+    }
+
+    fn meta_with_profile(profile: SpawnCommand, label: Option<&str>) -> HashMap<String, WorkspaceMetadata> {
+        HashMap::from([(
+            "api".to_string(),
+            WorkspaceMetadata {
+                profile: Some(profile),
+                profile_label: label.map(|s| s.to_string()),
+                ..WorkspaceMetadata::default()
+            },
+        )])
+    }
+
+    #[test]
+    fn subtitle_profile_uses_captured_label() {
+        let profile = SpawnCommand {
+            args: Some(vec!["pwsh".to_string(), "-NoLogo".to_string()]),
+            ..SpawnCommand::default()
+        };
+        let entries = compute_sidebar_entries(
+            &config_entries(),
+            &[],
+            &meta_with_profile(profile, Some("PowerShell 7")),
+            &SidebarOverrides::default(),
+        );
+        assert_eq!(
+            entries[0].subtitle_lines,
+            vec![
+                "\u{25b8} api".to_string(),
+                "$ npm run dev".to_string(),
+                "\u{25c6} PowerShell 7".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn subtitle_domain_profile_shows_bare_domain_name() {
+        let profile = SpawnCommand {
+            domain: SpawnTabDomain::DomainName("WSL:Ubuntu".to_string()),
+            ..SpawnCommand::default()
+        };
+        // The flyout label would be "domain `WSL:Ubuntu`"; the subtitle
+        // must show just the domain name.
+        let entries = compute_sidebar_entries(
+            &config_entries(),
+            &[],
+            &meta_with_profile(profile, Some("domain `WSL:Ubuntu`")),
+            &SidebarOverrides::default(),
+        );
+        assert_eq!(
+            entries[0].subtitle_lines[2],
+            "\u{25c6} WSL:Ubuntu".to_string()
+        );
+    }
+
+    #[test]
+    fn subtitle_profile_falls_back_to_args() {
+        let profile = SpawnCommand {
+            args: Some(vec!["pwsh".to_string()]),
+            ..SpawnCommand::default()
+        };
+        let entries = compute_sidebar_entries(
+            &config_entries(),
+            &[],
+            &meta_with_profile(profile, None),
+            &SidebarOverrides::default(),
+        );
+        assert_eq!(entries[0].subtitle_lines[2], "\u{25c6} pwsh".to_string());
     }
 
     #[test]

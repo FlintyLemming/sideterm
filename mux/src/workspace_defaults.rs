@@ -13,6 +13,10 @@ pub struct WorkspaceMetadata {
     /// `domain` names a specific domain, new tabs spawn there;
     /// otherwise they stay in the spawn request's domain.
     pub profile: Option<SpawnCommand>,
+    /// Display name for `profile` in the sidebar subtitle, captured
+    /// when the profile was chosen. Domain profiles display just the
+    /// domain name instead.
+    pub profile_label: Option<String>,
 }
 
 /// Resolve the effective (cwd, default_command) for `workspace`.
@@ -54,6 +58,23 @@ pub fn resolve_workspace_profile_impl(
     metadata: Option<&WorkspaceMetadata>,
 ) -> Option<SpawnCommand> {
     metadata.and_then(|m| m.profile.clone())
+}
+
+/// Display name for a workspace's default profile in the sidebar
+/// subtitle: the bare domain name for domain profiles, otherwise the
+/// label captured at selection time, falling back to the profile's
+/// args.
+pub fn workspace_profile_display(metadata: Option<&WorkspaceMetadata>) -> Option<String> {
+    let meta = metadata?;
+    let profile = meta.profile.as_ref()?;
+    Some(match &profile.domain {
+        SpawnTabDomain::DomainName(name) => name.clone(),
+        _ => meta
+            .profile_label
+            .clone()
+            .or_else(|| profile.args.as_ref().map(|args| args.join(" ")))
+            .unwrap_or_else(|| "default shell".to_string()),
+    })
 }
 
 /// What a plain spawn should run once the workspace's default profile

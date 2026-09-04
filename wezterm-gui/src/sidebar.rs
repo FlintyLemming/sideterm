@@ -16,7 +16,10 @@ pub struct SidebarRow {
     /// Title text including the " (n)" tab-count badge; no leading
     /// padding (paint adds it).
     pub title: String,
-    pub subtitle: Option<String>,
+    /// One line per configured default (directory / command /
+    /// profile), each with a leading marker. Painted in the smaller
+    /// subtitle font under the title.
+    pub subtitle_lines: Vec<String>,
     pub is_active: bool,
     pub is_open: bool,
 }
@@ -143,11 +146,14 @@ pub fn style_for_row(row: &SidebarRow, colors: &ResolvedColors) -> RowStyle {
 }
 
 /// Vertical geometry of the sidebar in pixels, derived from the
-/// title-font cell height the element painter lays out with.
+/// title- and subtitle-font cell heights the element painter lays
+/// out with.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RowGeometry {
-    /// Height of one text line.
+    /// Height of one title line.
     pub line: f32,
+    /// Height of one subtitle line (smaller font).
+    pub sub_line: f32,
     /// Padding above+below the text inside a row.
     pub pad_v: f32,
     /// Gap between rows.
@@ -157,9 +163,10 @@ pub struct RowGeometry {
 }
 
 impl RowGeometry {
-    pub fn from_cell_height(cell_height: f32) -> Self {
+    pub fn from_cell_heights(cell_height: f32, subtitle_cell_height: f32) -> Self {
         Self {
             line: cell_height,
+            sub_line: subtitle_cell_height,
             pad_v: 2. * ROW_PAD_V * cell_height,
             gap: ROW_GAP * cell_height,
             edge_v: EDGE_PAD_V * cell_height,
@@ -167,8 +174,8 @@ impl RowGeometry {
     }
 }
 
-pub fn row_height(has_subtitle: bool, geom: &RowGeometry) -> f32 {
-    geom.pad_v + geom.line * if has_subtitle { 2. } else { 1. }
+pub fn row_height(subtitle_lines: usize, geom: &RowGeometry) -> f32 {
+    geom.pad_v + geom.line + geom.sub_line * subtitle_lines as f32
 }
 
 /// How many rows (counting from the front) fit in `available` pixels.
@@ -176,7 +183,7 @@ pub fn fitting_rows(rows: &[SidebarRow], available: f32, geom: &RowGeometry) -> 
     let mut y = geom.edge_v;
     let mut count = 0;
     for row in rows {
-        let h = row_height(row.subtitle.is_some(), geom);
+        let h = row_height(row.subtitle_lines.len(), geom);
         if y + h > available - geom.edge_v {
             break;
         }
@@ -192,7 +199,7 @@ pub fn build_rows(active_workspace: &str, entries: &[SidebarEntry]) -> Vec<Sideb
     let mut rows = vec![SidebarRow {
         item: SidebarItem::NewButton,
         title: "+ New workspace".to_string(),
-        subtitle: None,
+        subtitle_lines: vec![],
         is_active: false,
         is_open: false,
     }];
@@ -204,7 +211,7 @@ pub fn build_rows(active_workspace: &str, entries: &[SidebarEntry]) -> Vec<Sideb
         rows.push(SidebarRow {
             item: SidebarItem::Entry(entry.name.clone()),
             title: format!("{}{badge}", entry.name),
-            subtitle: entry.subtitle.clone(),
+            subtitle_lines: entry.subtitle_lines.clone(),
             is_active: entry.name == active_workspace,
             is_open: entry.tab_count.is_some(),
         });
@@ -231,12 +238,12 @@ mod test {
             SidebarEntry {
                 name: "api".to_string(),
                 tab_count: Some(3),
-                subtitle: Some("api".to_string()),
+                subtitle_lines: vec!["\u{25b8} api".to_string(), "$ npm run dev".to_string()],
             },
             SidebarEntry {
                 name: "docs".to_string(),
                 tab_count: None,
-                subtitle: None,
+                subtitle_lines: vec![],
             },
         ]
     }
@@ -257,12 +264,15 @@ mod test {
         assert_eq!(rows[1].title, "api (3)");
         assert!(rows[1].is_active);
         assert!(rows[1].is_open);
-        assert_eq!(rows[1].subtitle.as_deref(), Some("api"));
+        assert_eq!(
+            rows[1].subtitle_lines,
+            vec!["\u{25b8} api".to_string(), "$ npm run dev".to_string()]
+        );
 
         assert_eq!(rows[2].title, "docs");
         assert!(!rows[2].is_active);
         assert!(!rows[2].is_open);
-        assert_eq!(rows[2].subtitle, None);
+        assert_eq!(rows[2].subtitle_lines, Vec::<String>::new());
     }
 
     #[test]
@@ -296,7 +306,7 @@ mod test {
         SidebarRow {
             item,
             title: "ws".to_string(),
-            subtitle: None,
+            subtitle_lines: vec![],
             is_active,
             is_open,
         }
@@ -343,22 +353,24 @@ mod test {
     }
 
     #[test]
-    fn row_height_adds_a_line_for_subtitle() {
-        let geom = RowGeometry::from_cell_height(10.);
-        assert_eq!(row_height(false, &geom), 10. + 2. * ROW_PAD_V * 10.);
-        assert_eq!(row_height(true, &geom), 20. + 2. * ROW_PAD_V * 10.);
+    fn row_height_adds_subtitle_lines() {
+        // title cell 10, subtitle cell 8
+        let geom = RowGeometry::from_cell_heights(10., 8.);
+        assert_eq!(row_height(0, &geom), 10. + 2. * ROW_PAD_V * 10.);
+        assert_eq!(row_height(1, &geom), 18. + 2. * ROW_PAD_V * 10.);
+        assert_eq!(row_height(3, &geom), 34. + 2. * ROW_PAD_V * 10.);
     }
 
     #[test]
     fn fitting_rows_stops_at_first_row_that_overflows() {
-        // cell height 10: rows are 14, 24 (subtitle), 14 px tall,
-        // gap 2.5, edge 5.
-        let geom = RowGeometry::from_cell_height(10.);
+        // title cell 10, subtitle cell 8: rows are 14, 30 (2 subtitle
+        // lines), 14 px tall; gap 2.5, edge 5.
+        let geom = RowGeometry::from_cell_heights(10., 8.);
         let rows = build_rows("api", &entries());
-        // available 60 fits the first two rows (5+14+2.5+24 = 45.5) but
-        // the third would end at 62 > 55.
+        // available 60 fits the first two rows (5+14+2.5+30 = 51.5) but
+        // the third would end at 68 > 55.
         assert_eq!(fitting_rows(&rows, 60., &geom), 2);
-        assert_eq!(fitting_rows(&rows, 70., &geom), 3);
+        assert_eq!(fitting_rows(&rows, 75., &geom), 3);
         assert_eq!(fitting_rows(&rows, 10., &geom), 0);
     }
 }

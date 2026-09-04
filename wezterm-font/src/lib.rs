@@ -458,6 +458,7 @@ enum Entity {
     CommandPalette,
     CharSelect,
     PaneSelect,
+    SidebarSubtitle,
 }
 
 struct FontConfigInner {
@@ -473,6 +474,7 @@ struct FontConfigInner {
     pane_select_font: RefCell<Option<Rc<LoadedFont>>>,
     char_select_font: RefCell<Option<Rc<LoadedFont>>>,
     command_palette_font: RefCell<Option<Rc<LoadedFont>>>,
+    sidebar_subtitle_font: RefCell<Option<Rc<LoadedFont>>>,
     fallback_channel: RefCell<Option<Sender<FallbackResolveInfo>>>,
 }
 
@@ -494,6 +496,7 @@ impl FontConfigInner {
             pane_select_font: RefCell::new(None),
             char_select_font: RefCell::new(None),
             command_palette_font: RefCell::new(None),
+            sidebar_subtitle_font: RefCell::new(None),
             font_scale: RefCell::new(1.0),
             dpi: RefCell::new(dpi),
             config: RefCell::new(config.clone()),
@@ -512,6 +515,7 @@ impl FontConfigInner {
         self.pane_select_font.borrow_mut().take();
         self.char_select_font.borrow_mut().take();
         self.command_palette_font.borrow_mut().take();
+        self.sidebar_subtitle_font.borrow_mut().take();
         self.metrics.borrow_mut().take();
         *self.font_dirs.borrow_mut() = Arc::new(FontDatabase::with_font_dirs(config)?);
         Ok(())
@@ -598,7 +602,7 @@ impl FontConfigInner {
         entity: Entity,
     ) -> anyhow::Result<Rc<LoadedFont>> {
         let config = self.config.borrow();
-        let make_bold = entity != Entity::CommandPalette;
+        let make_bold = !matches!(entity, Entity::CommandPalette | Entity::SidebarSubtitle);
         let (sys_font, sys_size) = self.compute_title_font(&config, make_bold);
 
         let (font_size, text_style) = match entity {
@@ -614,6 +618,12 @@ impl FontConfigInner {
             Entity::PaneSelect => (
                 config.pane_select_font_size,
                 config.pane_select_font.as_ref(),
+            ),
+            // A step down from the title size, same style; the sidebar
+            // stacks up to three subtitle lines under each title.
+            Entity::SidebarSubtitle => (
+                config.window_frame.font_size.unwrap_or(sys_size) * 0.85,
+                None,
             ),
         };
 
@@ -709,6 +719,19 @@ impl FontConfigInner {
         Ok(loaded)
     }
 
+    fn sidebar_subtitle_font(&self, myself: &Rc<Self>) -> anyhow::Result<Rc<LoadedFont>> {
+        let mut sidebar_subtitle_font = self.sidebar_subtitle_font.borrow_mut();
+
+        if let Some(entry) = sidebar_subtitle_font.as_ref() {
+            return Ok(Rc::clone(entry));
+        }
+
+        let loaded = self.make_entity_font_impl(myself, Entity::SidebarSubtitle)?;
+
+        sidebar_subtitle_font.replace(Rc::clone(&loaded));
+
+        Ok(loaded)
+    }
     fn resolve_font_helper_impl(
         &self,
         attributes: &[FontAttributes],
@@ -1077,6 +1100,10 @@ impl FontConfiguration {
 
     pub fn char_select_font(&self) -> anyhow::Result<Rc<LoadedFont>> {
         self.inner.char_select_font(&self.inner)
+    }
+
+    pub fn sidebar_subtitle_font(&self) -> anyhow::Result<Rc<LoadedFont>> {
+        self.inner.sidebar_subtitle_font(&self.inner)
     }
 
     /// Given a text style, load (with caching) the font that best
