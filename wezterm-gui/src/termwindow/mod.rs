@@ -1858,7 +1858,9 @@ impl TermWindow {
 
     /// Build the flyout entries for "Set default profile": a leading
     /// "Default shell" row (clears the override), then the config's
-    /// launch_menu entries labeled the same way the launcher does.
+    /// launch_menu entries labeled the same way the launcher does,
+    /// then every spawnable mux domain (e.g. auto-detected WSL
+    /// distributions), which never appear in launch_menu.
     fn profile_menu_entries() -> Vec<crate::sidebar_menu::ProfileMenuEntry> {
         let mut entries = vec![crate::sidebar_menu::ProfileMenuEntry {
             label: "Default shell".to_string(),
@@ -1875,6 +1877,23 @@ impl TermWindow {
             entries.push(crate::sidebar_menu::ProfileMenuEntry {
                 label,
                 profile: Some(item.clone()),
+            });
+        }
+
+        let mux = Mux::get();
+        let mut domains = mux.iter_domains();
+        domains.sort_by_key(|dom| dom.domain_id());
+        for dom in domains {
+            if !dom.spawnable() {
+                continue;
+            }
+            let name = dom.domain_name().to_string();
+            entries.push(crate::sidebar_menu::ProfileMenuEntry {
+                label: format!("domain `{}`", name),
+                profile: Some(config::keyassignment::SpawnCommand {
+                    domain: config::keyassignment::SpawnTabDomain::DomainName(name),
+                    ..config::keyassignment::SpawnCommand::default()
+                }),
             });
         }
         entries

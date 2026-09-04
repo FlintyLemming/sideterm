@@ -1,4 +1,4 @@
-use config::keyassignment::SpawnCommand;
+use config::keyassignment::{SpawnCommand, SpawnTabDomain};
 use config::WorkspaceEntry;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -8,8 +8,10 @@ pub struct WorkspaceMetadata {
     pub cwd: Option<PathBuf>,
     pub default_command: Option<String>,
     /// Default launch profile for new tabs in this workspace: a
-    /// snapshot of a `launch_menu` entry chosen at runtime. Its
-    /// `domain` is ignored — new tabs stay in the current domain.
+    /// snapshot of a `launch_menu` entry or a mux domain (e.g. an
+    /// auto-detected WSL distribution) chosen at runtime. When its
+    /// `domain` names a specific domain, new tabs spawn there;
+    /// otherwise they stay in the spawn request's domain.
     pub profile: Option<SpawnCommand>,
 }
 
@@ -64,8 +66,15 @@ pub struct ProfileOverlay {
     pub cwd: Option<PathBuf>,
     /// Environment variables contributed by the profile.
     pub env: HashMap<String, String>,
+    /// The profile's domain, when it names a specific domain.
+    /// `None` = keep whatever domain the spawn request asked for.
+    pub domain: Option<SpawnTabDomain>,
     /// Whether the workspace's default command should be injected
-    /// into the spawned shell (only when a fresh shell is started).
+    /// into the spawned program. True unless the spawn request
+    /// carried explicit args; the assumption is that the profile's
+    /// program (or the default shell) is an interactive shell the
+    /// command can be typed into. If a profile runs a non-shell
+    /// program, don't set a default command for that workspace.
     pub inject_default_command: bool,
 }
 
@@ -82,6 +91,7 @@ pub fn apply_workspace_profile(
             args: Some(args.to_vec()),
             cwd: spawn_cwd,
             env: HashMap::new(),
+            domain: None,
             inject_default_command: false,
         };
     }
@@ -90,12 +100,22 @@ pub fn apply_workspace_profile(
             args: profile.args.clone(),
             cwd: spawn_cwd.or_else(|| profile.cwd.clone()),
             env: profile.set_environment_variables.clone(),
-            inject_default_command: profile.args.is_none(),
+            // Only a concretely named domain overrides the spawn's;
+            // DefaultDomain/CurrentPaneDomain are just the profile
+            // inheriting SpawnCommand's defaults, not a real choice.
+            domain: match &profile.domain {
+                named @ (SpawnTabDomain::DomainName(_) | SpawnTabDomain::DomainId(_)) => {
+                    Some(named.clone())
+                }
+                _ => None,
+            },
+            inject_default_command: true,
         },
         None => ProfileOverlay {
             args: None,
             cwd: spawn_cwd,
             env: HashMap::new(),
+            domain: None,
             inject_default_command: true,
         },
     }
@@ -249,8 +269,9 @@ mod test {
         );
         assert_eq!(overlay.cwd, Some(PathBuf::from("D:/profile-cwd")));
         assert_eq!(overlay.env.get("FOO"), Some(&"bar".to_string()));
-        // The profile's own program runs, so nothing is injected into a shell.
-        assert!(!overlay.inject_default_command);
+        // The profile's program is assumed to be a shell: the
+        // workspace's default command is still injected into it.
+        assert!(overlay.inject_default_command);
     }
 
     #[test]
@@ -267,16 +288,18 @@ mod test {
     }
 
     #[test]
-    fn profile_without_args_still_injects_default_command() {
-        // A profile with no args means "the default shell, with these
-        // env vars / this cwd": the shell starts and the workspace's
-        // default command is injected into it as before.
+    fn profile_with_args_still_injects_default_command() {
+        // A profile with args (e.g. PowerShell 7) picks the shell;
+        // the workspace's default command is typed into that shell.
         let overlay = apply_workspace_profile(
             None,
             None,
-            Some(&profile(None, Some(PathBuf::from("D:/profile-cwd")))),
+            Some(&profile(
+                Some(vec!["pwsh".to_string()]),
+                Some(PathBuf::from("D:/profile-cwd")),
+            )),
         );
-        assert_eq!(overlay.args, None);
+        assert_eq!(overlay.args, Some(vec!["pwsh".to_string()]));
         assert_eq!(overlay.cwd, Some(PathBuf::from("D:/profile-cwd")));
         assert!(overlay.inject_default_command);
     }
@@ -287,6 +310,43 @@ mod test {
         assert_eq!(overlay.args, None);
         assert_eq!(overlay.cwd, None);
         assert!(overlay.env.is_empty());
+        assert_eq!(overlay.domain, None);
         assert!(overlay.inject_default_command);
+    }
+
+    #[test]
+    fn profile_with_named_domain_overrides_the_spawn_domain() {
+        let mut prof = profile(None, None);
+        prof.domain = SpawnTabDomain::DomainName("WSL:Ubuntu".to_string());
+        let overlay = apply_workspace_profile(None, None, Some(&prof));
+        assert_eq!(
+            overlay.domain,
+            Some(SpawnTabDomain::DomainName("WSL:Ubuntu".to_string()))
+        );
+        // No args: the domain's default shell runs, so the workspace's
+        // default command is still injected.
+        assert!(overlay.inject_default_command);
+    }
+
+    #[test]
+    fn profile_with_unspecified_domain_keeps_the_spawn_domain() {
+        // SpawnCommand::default().domain is CurrentPaneDomain: that is
+        // "no opinion", not a choice to pin the pane's domain.
+        let overlay = apply_workspace_profile(
+            None,
+            None,
+            Some(&profile(Some(vec!["pwsh".to_string()]), None)),
+        );
+        assert_eq!(overlay.domain, None);
+    }
+
+    #[test]
+    fn explicit_spawn_args_ignore_the_profile_domain() {
+        let explicit = vec!["vim".to_string()];
+        let mut prof = profile(None, None);
+        prof.domain = SpawnTabDomain::DomainName("WSL:Ubuntu".to_string());
+        let overlay = apply_workspace_profile(Some(&explicit), None, Some(&prof));
+        assert_eq!(overlay.args, Some(explicit));
+        assert_eq!(overlay.domain, None);
     }
 }

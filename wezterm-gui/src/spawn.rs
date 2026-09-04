@@ -105,14 +105,20 @@ pub async fn spawn_command_internal(
         }
     };
 
-    // The workspace default command is only injected into fresh
-    // interactive shells; an explicit `args` (given directly or via
-    // the workspace profile) means a specific program runs instead.
+    // The workspace default command is injected whenever the spawn
+    // had no explicit program of its own: the workspace profile only
+    // picks which shell/program hosts the command, it doesn't
+    // replace it.
     let inject_command = if overlay.inject_default_command {
         mux.resolve_workspace_defaults(&workspace).1
     } else {
         None
     };
+
+    // A profile that names a specific domain (e.g. an auto-detected
+    // WSL distribution) retargets the spawn there; otherwise the
+    // spawn request's own domain resolution is kept.
+    let domain = overlay.domain.clone().unwrap_or_else(|| spawn.domain.clone());
 
     match spawn_where {
         SpawnWhere::SplitPane(direction) => {
@@ -135,7 +141,7 @@ pub async fn spawn_command_internal(
                             command: cmd_builder,
                             command_dir: cwd,
                         },
-                        spawn.domain,
+                        domain,
                     )
                     .await
                     .context("split_pane")?;
@@ -151,7 +157,7 @@ pub async fn spawn_command_internal(
                         SpawnWhere::NewWindow => None,
                         _ => src_window_id,
                     },
-                    spawn.domain,
+                    domain,
                     cmd_builder,
                     cwd,
                     size,
