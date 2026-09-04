@@ -418,7 +418,7 @@ pub struct Config {
     #[dynamic(default = "default_mux_output_parser_buffer_size")]
     pub mux_output_parser_buffer_size: usize,
 
-    #[dynamic(default = "default_true")]
+    #[dynamic(default)]
     pub mux_enable_ssh_agent: bool,
 
     #[dynamic(default)]
