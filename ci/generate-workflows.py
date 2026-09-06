@@ -26,12 +26,12 @@ TRIGGER_PATHS_APPIMAGE = [
 ]
 
 TRIGGER_PATHS_UNIX = [
-    "assets/open-wezterm-here",
+    "assets/open-sideterm-here",
     "assets/shell-completion/**/*",
     "assets/shell-integration/**/*",
-    "assets/wezterm-nautilus.py",
-    "assets/wezterm.appdata.xml",
-    "assets/wezterm.desktop",
+    "assets/sideterm-nautilus.py",
+    "assets/sideterm.appdata.xml",
+    "assets/sideterm.desktop",
     "get-deps",
     "ci/tag-name.sh",
     "termwiz/data/wezterm.terminfo",
@@ -46,7 +46,7 @@ TRIGGER_PATHS_MAC = [
 
 TRIGGER_PATHS_WIN = [
     "assets/windows/**/*",
-    "ci/windows-installer.iss",
+    "ci/sideterm-installer.iss",
 ]
 
 
@@ -525,17 +525,17 @@ rustup default {toolchain}
                 # Add the distro name/version into the filename
                 RunStep(
                     "Rename APKs",
-                    f"mv ~/packages/wezterm/x86_64/*.apk $(echo ~/packages/wezterm/x86_64/*.apk | sed -e 's/wezterm-/wezterm-{self.name}-/')",
+                    f"mv ~/packages/sideterm/x86_64/*.apk $(echo ~/packages/sideterm/x86_64/*.apk | sed -e 's/sideterm-/sideterm-{self.name}-/')",
                 ),
                 # Move it to the repo dir
                 RunStep(
                     "Move APKs",
-                    f"mv ~/packages/wezterm/x86_64/*.apk .",
+                    f"mv ~/packages/sideterm/x86_64/*.apk .",
                 ),
                 # Move and rename the keys
                 RunStep(
                     "Move APK keys",
-                    f"mv ~/.abuild/*.pub wezterm-{self.name}.pub",
+                    f"mv ~/.abuild/*.pub sideterm-{self.name}.pub",
                 ),
             ]
         elif self.uses_zypper():
@@ -561,15 +561,15 @@ rustup default {toolchain}
     def asset_patterns(self):
         patterns = []
         if self.uses_yum() or self.uses_zypper():
-            patterns += ["wezterm-*.rpm"]
+            patterns += ["sideterm-*.rpm"]
         elif "win" in self.name:
-            patterns += ["WezTerm-*.zip", "WezTerm-*.exe"]
+            patterns += ["SideTerm-*.zip", "SideTerm-*.exe"]
         elif "mac" in self.name:
-            patterns += ["WezTerm-*.zip"]
+            patterns += ["SideTerm-*.zip"]
         elif ("ubuntu" in self.name) or ("debian" in self.name):
-            patterns += ["wezterm-*.deb", "wezterm-*.xz"]
+            patterns += ["sideterm-*.deb", "sideterm-*.xz"]
         elif "alpine" in self.name:
-            patterns += ["wezterm-*.apk"]
+            patterns += ["sideterm-*.apk"]
             if self.is_tag:
                 patterns.append("*.pub")
 
@@ -589,9 +589,9 @@ rustup default {toolchain}
                 rpmbuild = "/usr/src/packages/RPMS/*"
 
             script = ""
-            # Note that 'wezterm' MUST be last in this list,
+            # Note that 'sideterm' MUST be last in this list,
             # otherwise the globbing will mess things up
-            for pkg in ['wezterm-common', 'wezterm-gui', 'wezterm-mux-server', 'wezterm']:
+            for pkg in ['sideterm-common', 'sideterm-gui', 'sideterm-mux-server', 'sideterm']:
                 script = script + f"mv {rpmbuild}/{pkg}-*.rpm {pkg}-nightly-{self.name}.rpm\n"
 
             steps.append(
@@ -604,7 +604,7 @@ rustup default {toolchain}
             steps.append(
                 RunStep(
                     "Move APKs",
-                    f"mv ~/packages/wezterm/x86_64/*.apk wezterm-nightly-{self.name}.apk",
+                    f"mv ~/packages/sideterm/x86_64/*.apk sideterm-nightly-{self.name}.apk",
                 )
             )
 

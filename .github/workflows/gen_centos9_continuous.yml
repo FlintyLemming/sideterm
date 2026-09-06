@@ -14,12 +14,12 @@ on:
       - ".github/workflows/gen_centos9_continuous.yml"
       - "assets/fonts/**/*"
       - "assets/icon/*"
-      - "assets/open-wezterm-here"
+      - "assets/open-sideterm-here"
       - "assets/shell-completion/**/*"
       - "assets/shell-integration/**/*"
-      - "assets/wezterm-nautilus.py"
-      - "assets/wezterm.appdata.xml"
-      - "assets/wezterm.desktop"
+      - "assets/sideterm-nautilus.py"
+      - "assets/sideterm.appdata.xml"
+      - "assets/sideterm.desktop"
       - "ci/deploy.sh"
       - "ci/tag-name.sh"
       - "get-deps"
@@ -106,15 +106,15 @@ jobs:
       - name: "Move RPM"
         shell: bash
         run: |
-          mv ~/rpmbuild/RPMS/*/wezterm-common-*.rpm wezterm-common-nightly-centos9.rpm
-          mv ~/rpmbuild/RPMS/*/wezterm-gui-*.rpm wezterm-gui-nightly-centos9.rpm
-          mv ~/rpmbuild/RPMS/*/wezterm-mux-server-*.rpm wezterm-mux-server-nightly-centos9.rpm
-          mv ~/rpmbuild/RPMS/*/wezterm-*.rpm wezterm-nightly-centos9.rpm
+          mv ~/rpmbuild/RPMS/*/sideterm-common-*.rpm sideterm-common-nightly-centos9.rpm
+          mv ~/rpmbuild/RPMS/*/sideterm-gui-*.rpm sideterm-gui-nightly-centos9.rpm
+          mv ~/rpmbuild/RPMS/*/sideterm-mux-server-*.rpm sideterm-mux-server-nightly-centos9.rpm
+          mv ~/rpmbuild/RPMS/*/sideterm-*.rpm sideterm-nightly-centos9.rpm
       - name: "Upload artifact"
         uses: actions/upload-artifact@v7
         with:
           name: "centos9"
-          path: "wezterm-*.rpm"
+          path: "sideterm-*.rpm"
           retention-days: 5
 
   upload:
@@ -138,7 +138,7 @@ jobs:
           name: "centos9"
       - name: "Checksum"
         shell: bash
-        run: "for f in wezterm-*.rpm ; do sha256sum $f > $f.sha256 ; done"
+        run: "for f in sideterm-*.rpm ; do sha256sum $f > $f.sha256 ; done"
       - name: "Ensure the nightly release exists"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -148,4 +148,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: "bash ci/retry.sh gh release upload --clobber nightly wezterm-*.rpm *.sha256"
+        run: "bash ci/retry.sh gh release upload --clobber nightly sideterm-*.rpm *.sha256"

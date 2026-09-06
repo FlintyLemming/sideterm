@@ -14,12 +14,12 @@ on:
       - ".github/workflows/gen_debian12_continuous.yml"
       - "assets/fonts/**/*"
       - "assets/icon/*"
-      - "assets/open-wezterm-here"
+      - "assets/open-sideterm-here"
       - "assets/shell-completion/**/*"
       - "assets/shell-integration/**/*"
-      - "assets/wezterm-nautilus.py"
-      - "assets/wezterm.appdata.xml"
-      - "assets/wezterm.desktop"
+      - "assets/sideterm-nautilus.py"
+      - "assets/sideterm.appdata.xml"
+      - "assets/sideterm.desktop"
       - "ci/deploy.sh"
       - "ci/tag-name.sh"
       - "get-deps"
@@ -111,8 +111,8 @@ jobs:
         with:
           name: "debian12"
           path: |
-            wezterm-*.deb
-            wezterm-*.xz
+            sideterm-*.deb
+            sideterm-*.xz
           retention-days: 5
 
   upload:
@@ -136,7 +136,7 @@ jobs:
           name: "debian12"
       - name: "Checksum"
         shell: bash
-        run: "for f in wezterm-*.deb wezterm-*.xz ; do sha256sum $f > $f.sha256 ; done"
+        run: "for f in sideterm-*.deb sideterm-*.xz ; do sha256sum $f > $f.sha256 ; done"
       - name: "Ensure the nightly release exists"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -146,4 +146,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: "bash ci/retry.sh gh release upload --clobber nightly wezterm-*.deb wezterm-*.xz *.sha256"
+        run: "bash ci/retry.sh gh release upload --clobber nightly sideterm-*.deb sideterm-*.xz *.sha256"

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=SideTerm
+Comment=A GPU-accelerated terminal emulator with a workspace sidebar
+Keywords=shell;prompt;command;commandline;cmd;
+Icon=org.sideterm.sideterm
+StartupWMClass=org.sideterm.sideterm
+TryExec=sideterm
+Exec=sideterm start --cwd .
+Type=Application
+Categories=System;TerminalEmulator;Utility;
+Terminal=false

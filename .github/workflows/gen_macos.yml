@@ -95,4 +95,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: "macos"
-          path: "WezTerm-*.zip"
+          path: "SideTerm-*.zip"

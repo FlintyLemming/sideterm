@@ -104,8 +104,8 @@ jobs:
         with:
           name: "ubuntu26.04"
           path: |
-            wezterm-*.deb
-            wezterm-*.xz
+            sideterm-*.deb
+            sideterm-*.xz
             *src.tar.gz
             *.AppImage
 
@@ -130,7 +130,7 @@ jobs:
           name: "ubuntu26.04"
       - name: "Checksum"
         shell: bash
-        run: "for f in wezterm-*.deb wezterm-*.xz *src.tar.gz *.AppImage ; do sha256sum $f > $f.sha256 ; done"
+        run: "for f in sideterm-*.deb sideterm-*.xz *src.tar.gz *.AppImage ; do sha256sum $f > $f.sha256 ; done"
       - name: "Create pre-release"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -140,4 +140,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: "bash ci/retry.sh gh release upload --clobber $(ci/tag-name.sh) wezterm-*.deb wezterm-*.xz *src.tar.gz *.AppImage *.sha256"
+        run: "bash ci/retry.sh gh release upload --clobber $(ci/tag-name.sh) sideterm-*.deb sideterm-*.xz *src.tar.gz *.AppImage *.sha256"

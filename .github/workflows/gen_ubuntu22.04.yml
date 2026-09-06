@@ -12,12 +12,12 @@ on:
       - ".github/workflows/gen_ubuntu22.04.yml"
       - "assets/fonts/**/*"
       - "assets/icon/*"
-      - "assets/open-wezterm-here"
+      - "assets/open-sideterm-here"
       - "assets/shell-completion/**/*"
       - "assets/shell-integration/**/*"
-      - "assets/wezterm-nautilus.py"
-      - "assets/wezterm.appdata.xml"
-      - "assets/wezterm.desktop"
+      - "assets/sideterm-nautilus.py"
+      - "assets/sideterm.appdata.xml"
+      - "assets/sideterm.desktop"
       - "ci/deploy.sh"
       - "ci/tag-name.sh"
       - "get-deps"
@@ -108,5 +108,5 @@ jobs:
         with:
           name: "ubuntu22.04"
           path: |
-            wezterm-*.deb
-            wezterm-*.xz
+            sideterm-*.deb
+            sideterm-*.xz

@@ -44,7 +44,7 @@ string.
 ## Additional Resources
 
 * `assets/shell-integration`, `assets/shell-completion`: should be deployed along with the `wezterm` executable
-* `assets/wezterm.desktop`, `assets/wezterm.appdata.xml`, `assets/wezterm-nautilus.py`: should be deployed along with `wezterm-gui`
+* `assets/sideterm.desktop`, `assets/sideterm.appdata.xml`, `assets/sideterm-nautilus.py`: should be deployed along with `sideterm-gui`
 
 ## Building wezterm
 

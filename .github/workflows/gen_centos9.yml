@@ -12,12 +12,12 @@ on:
       - ".github/workflows/gen_centos9.yml"
       - "assets/fonts/**/*"
       - "assets/icon/*"
-      - "assets/open-wezterm-here"
+      - "assets/open-sideterm-here"
       - "assets/shell-completion/**/*"
       - "assets/shell-integration/**/*"
-      - "assets/wezterm-nautilus.py"
-      - "assets/wezterm.appdata.xml"
-      - "assets/wezterm.desktop"
+      - "assets/sideterm-nautilus.py"
+      - "assets/sideterm.appdata.xml"
+      - "assets/sideterm.desktop"
       - "ci/deploy.sh"
       - "ci/tag-name.sh"
       - "get-deps"
@@ -107,4 +107,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: "centos9"
-          path: "wezterm-*.rpm"
+          path: "sideterm-*.rpm"

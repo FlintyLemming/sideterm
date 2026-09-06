@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <content_rating type="oars-1.0" />
+  <id>org.sideterm.sideterm</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>SideTerm</name>
+  <summary>A GPU-accelerated terminal emulator with a workspace sidebar</summary>
+  <description>
+    <p>
+      SideTerm is a fork of WezTerm, a GPU-accelerated cross-platform terminal
+      emulator and multiplexer, with one major addition: a workspace sidebar
+      that turns the terminal from a pile of tabs into a two-level structure of
+      workspaces and tabs.
+    </p>
+
+    <p>
+      Configuration is expressed using Lua and many powerful functions are
+      provided to help you customize your terminal to your workflow.
+    </p>
+
+    <p>
+      Integrated ssh allows using multiple tabs and panes without requiring
+      tmux to be installed on the remote host, and remote multiplexer support
+      allows tmux+mosh style workflows without using tmux or mosh, while
+      providing a fully native GUI locally.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">org.sideterm.sideterm.desktop</launchable>
+
+  <url type="homepage">https://github.com/FlintyLemming/sideterm</url>
+  <url type="bugtracker">https://github.com/FlintyLemming/sideterm/issues</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The workspace sidebar alongside a terminal</caption>
+      <image>https://raw.githubusercontent.com/FlintyLemming/sideterm/main/docs/screenshots/two.png</image>
+    </screenshot>
+  </screenshots>
+
+  <developer_name>FlintyLemming</developer_name>
+
+  <releases>
+    <!-- NOTE: This release should only be used for local builds (e.g. for the flatpak package) -->
+    <release version="20260000-000000-local-build" date="2026-07-31">
+      <description>
+        <p>
+          A workspace sidebar on top of upstream WezTerm.
+        </p>
+      </description>
+    </release>
+  </releases>
+</component>

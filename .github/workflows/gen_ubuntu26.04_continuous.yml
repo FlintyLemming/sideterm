@@ -14,12 +14,12 @@ on:
       - ".github/workflows/gen_ubuntu26.04_continuous.yml"
       - "assets/fonts/**/*"
       - "assets/icon/*"
-      - "assets/open-wezterm-here"
+      - "assets/open-sideterm-here"
       - "assets/shell-completion/**/*"
       - "assets/shell-integration/**/*"
-      - "assets/wezterm-nautilus.py"
-      - "assets/wezterm.appdata.xml"
-      - "assets/wezterm.desktop"
+      - "assets/sideterm-nautilus.py"
+      - "assets/sideterm.appdata.xml"
+      - "assets/sideterm.desktop"
       - "ci/appimage.sh"
       - "ci/appstreamcli"
       - "ci/deploy.sh"
@@ -128,8 +128,8 @@ jobs:
         with:
           name: "ubuntu26.04"
           path: |
-            wezterm-*.deb
-            wezterm-*.xz
+            sideterm-*.deb
+            sideterm-*.xz
             *src.tar.gz
             *.AppImage
           retention-days: 5
@@ -155,7 +155,7 @@ jobs:
           name: "ubuntu26.04"
       - name: "Checksum"
         shell: bash
-        run: "for f in wezterm-*.deb wezterm-*.xz *src.tar.gz *.AppImage ; do sha256sum $f > $f.sha256 ; done"
+        run: "for f in sideterm-*.deb sideterm-*.xz *src.tar.gz *.AppImage ; do sha256sum $f > $f.sha256 ; done"
       - name: "Ensure the nightly release exists"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -165,4 +165,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: "bash ci/retry.sh gh release upload --clobber nightly wezterm-*.deb wezterm-*.xz *src.tar.gz *.AppImage *.sha256"
+        run: "bash ci/retry.sh gh release upload --clobber nightly sideterm-*.deb sideterm-*.xz *src.tar.gz *.AppImage *.sha256"
