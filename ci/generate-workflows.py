@@ -4,10 +4,9 @@ import sys
 import glob
 from copy import deepcopy
 
-# The build from this target will be pushed to the gemfury APT repo
-GEMFURY_TARGET = "ubuntu:22.04"
+# The repo that owns the release assets produced by these workflows
+REPO = "FlintyLemming/sideterm"
 # The build from this target will be baked into the AppImage
-# This target is also used for updating the flathub & linuxbrew repos
 APPIMAGE_TARGET = "ubuntu:26.04"
 
 TRIGGER_PATHS = [
@@ -622,8 +621,6 @@ rustup default {toolchain}
         ]
 
     def upload_asset_nightly(self):
-        steps = []
-
         patterns = self.asset_patterns()
         checksum = RunStep(
             "Checksum",
@@ -632,15 +629,6 @@ rustup default {toolchain}
 
         patterns.append("*.sha256")
         glob = " ".join(patterns)
-
-        if self.container == GEMFURY_TARGET:
-            steps += [
-                RunStep(
-                    "Upload to gemfury",
-                    f"for f in wezterm*.deb ; do curl -i -F package=@$f https://$FURY_TOKEN@push.fury.io/wez/ ; done",
-                    env={"FURY_TOKEN": "${{ secrets.FURY_TOKEN }}"},
-                ),
-            ]
 
         return [
             ActionStep(
@@ -650,15 +638,18 @@ rustup default {toolchain}
             ),
             checksum,
             RunStep(
+                "Ensure the nightly release exists",
+                "bash ci/retry.sh bash ci/create-nightly-release.sh",
+                env={"GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"},
+            ),
+            RunStep(
                 "Upload to Nightly Release",
                 f"bash ci/retry.sh gh release upload --clobber nightly {glob}",
                 env={"GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"},
             ),
-        ] + steps
+        ]
 
     def upload_asset_tag(self):
-        steps = []
-
         patterns = self.asset_patterns()
         checksum = RunStep(
             "Checksum",
@@ -668,16 +659,7 @@ rustup default {toolchain}
         patterns.append("*.sha256")
         glob = " ".join(patterns)
 
-        if self.container == GEMFURY_TARGET:
-            steps += [
-                RunStep(
-                    "Upload to gemfury",
-                    f"for f in wezterm*.deb ; do curl -i -F package=@$f https://$FURY_TOKEN@push.fury.io/wez/ ; done",
-                    env={"FURY_TOKEN": "${{ secrets.FURY_TOKEN }}"},
-                ),
-            ]
-
-        return steps + [
+        return [
             ActionStep(
                 "Download artifact",
                 action="actions/download-artifact@v8",
@@ -699,121 +681,6 @@ rustup default {toolchain}
                 },
             ),
         ]
-
-    def create_flathub_pr(self):
-        if not self.app_image:
-            return []
-        return [
-            ActionStep(
-                "Checkout flathub/org.wezfurlong.wezterm",
-                action="actions/checkout@v5",
-                params={
-                    "repository": "flathub/org.wezfurlong.wezterm",
-                    "path": "flathub",
-                    "token": "${{ secrets.GH_PAT }}",
-                },
-            ),
-            RunStep(
-                "Create flathub commit and push",
-                "bash ci/make-flathub-pr.sh",
-            ),
-            RunStep(
-                "Submit PR",
-                'cd flathub && gh pr create --fill --body "PR automatically created by release automation in the wezterm repo"',
-                env={
-                    "GITHUB_TOKEN": "${{ secrets.GH_PAT }}",
-                },
-            ),
-        ]
-
-    def create_winget_pr(self):
-        steps = []
-        if "windows" in self.name:
-            steps += [
-                ActionStep(
-                    "Checkout winget-pkgs",
-                    action="actions/checkout@v5",
-                    params={
-                        "repository": "wez/winget-pkgs",
-                        "path": "winget-pkgs",
-                        "token": "${{ secrets.GH_PAT }}",
-                    },
-                ),
-                RunStep(
-                    "Setup email for winget repo",
-                    "cd winget-pkgs && git config user.email wez@wezfurlong.org",
-                ),
-                RunStep(
-                    "Setup name for winget repo",
-                    "cd winget-pkgs && git config user.name 'Wez Furlong'",
-                ),
-                RunStep(
-                    "Create winget manifest and push to fork",
-                    "bash ci/make-winget-pr.sh winget-pkgs WezTerm-*.exe",
-                ),
-                RunStep(
-                    "Submit PR",
-                    'cd winget-pkgs && gh pr create --fill --body "PR automatically created by release automation in the wezterm repo"',
-                    env={
-                        "GITHUB_TOKEN": "${{ secrets.GH_PAT }}",
-                    },
-                ),
-            ]
-
-        return steps
-
-    def update_homebrew_tap(self):
-        steps = []
-        if "macos" in self.name:
-            steps += [
-                ActionStep(
-                    "Checkout homebrew tap",
-                    action="actions/checkout@v5",
-                    params={
-                        "repository": "wez/homebrew-wezterm",
-                        "path": "homebrew-wezterm",
-                        "token": "${{ secrets.GH_PAT }}",
-                    },
-                ),
-                RunStep(
-                    "Update homebrew tap formula",
-                    "cp wezterm.rb homebrew-wezterm/Casks/wezterm.rb",
-                ),
-                ActionStep(
-                    "Commit homebrew tap changes",
-                    action="stefanzweifel/git-auto-commit-action@v5",
-                    params={
-                        "commit_message": "Automated update to match latest tag",
-                        "repository": "homebrew-wezterm",
-                    },
-                ),
-            ]
-        elif self.app_image:
-            steps += [
-                ActionStep(
-                    "Checkout linuxbrew tap",
-                    action="actions/checkout@v5",
-                    params={
-                        "repository": "wez/homebrew-wezterm-linuxbrew",
-                        "path": "linuxbrew-wezterm",
-                        "token": "${{ secrets.GH_PAT }}",
-                    },
-                ),
-                RunStep(
-                    "Update linuxbrew tap formula",
-                    "cp wezterm-linuxbrew.rb linuxbrew-wezterm/Formula/wezterm.rb",
-                ),
-                ActionStep(
-                    "Commit linuxbrew tap changes",
-                    action="stefanzweifel/git-auto-commit-action@v5",
-                    params={
-                        "commit_message": "Automated update to match latest tag",
-                        "repository": "linuxbrew-wezterm",
-                    },
-                ),
-            ]
-
-        return steps
 
     def global_env(self):
         self.env["CARGO_INCREMENTAL"] = "0"
@@ -984,11 +851,7 @@ rustup default {toolchain}
 
         uploader = Job(
             runs_on="ubuntu-latest",
-            steps=self.checkout(submodules=False)
-            + self.update_homebrew_tap()
-            + self.upload_asset_tag()
-            + self.create_winget_pr()
-            + self.create_flathub_pr(),
+            steps=self.checkout(submodules=False) + self.upload_asset_tag(),
         )
 
         return (
@@ -1018,7 +881,6 @@ TARGETS = [
 
 
 def generate_actions(namer, jobber, trigger, is_continuous, is_tag=False):
-    have_gemfury = False
     have_appimage = False
     for t in TARGETS:
         # Clone the definition, as some Target methods called
@@ -1028,8 +890,6 @@ def generate_actions(namer, jobber, trigger, is_continuous, is_tag=False):
 
         if t.app_image:
             have_appimage = True
-        if t.container == GEMFURY_TARGET:
-            have_gemfury = True
 
         t.is_tag = is_tag
         # if t.continuous_only and not is_continuous:
@@ -1083,11 +943,11 @@ jobs:
             # <https://github.com/cli/cli/issues/4863>
             if uploader:
                 f.write(
-                    """
+                    f"""
   upload:
     runs-on: ubuntu-latest
     needs: build
-    if: github.repository == 'wezterm/wezterm'
+    if: github.repository == '{REPO}'
     permissions:
       contents: write
       pages: write
@@ -1106,8 +966,6 @@ jobs:
             pass
     if not have_appimage:
         raise NotImplementedError("no appimage target is present")
-    if not have_gemfury:
-        raise NotImplementedError("no gemfury target is present")
 
 
 def generate_pr_actions():
@@ -1152,7 +1010,7 @@ def tag_actions():
 on:
   push:
     tags:
-      - "20*"
+      - "v*"
 """,
         is_continuous=True,
         is_tag=True,

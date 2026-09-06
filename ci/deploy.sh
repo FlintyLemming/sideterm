@@ -4,7 +4,14 @@ set -e
 
 TARGET_DIR=${1:-target}
 
-TAG_NAME=${TAG_NAME:-$(git -c "core.abbrev=8" show -s "--format=%cd-%h" "--date=format:%Y%m%d-%H%M%S")}
+TAG_NAME=${TAG_NAME:-$(bash ci/tag-name.sh)}
+
+# Version fields inside the packages can't carry the leading "v" of a tag like
+# v0.1.0 -- dpkg requires a version that starts with a digit. File names keep
+# using TAG_NAME; only the metadata uses this.
+PKG_VERSION=${TAG_NAME#nightly-}
+PKG_VERSION=${PKG_VERSION#nightly}
+PKG_VERSION=${PKG_VERSION#v}
 
 HERE=$(pwd)
 
@@ -126,14 +133,14 @@ case $OSTYPE in
     cp $TARGET_DIR/release/mesa/opengl32.dll \
         $zipdir/mesa
     7z a -tzip $zipname $zipdir
-    iscc.exe -DMyAppVersion=${TAG_NAME#nightly} -F${instname} ci/windows-installer.iss
+    iscc.exe -DMyAppVersion=${PKG_VERSION} -F${instname} ci/windows-installer.iss
     ;;
   linux-gnu|linux)
     distro=$(lsb_release -is 2>/dev/null || sh -c "source /etc/os-release && echo \$NAME")
     distver=$(lsb_release -rs 2>/dev/null || sh -c "source /etc/os-release && echo \$VERSION_ID")
     case "$distro" in
       *Fedora*|*CentOS*|*SUSE*)
-        WEZTERM_RPM_VERSION=$(echo ${TAG_NAME#nightly-} | tr - _)
+        WEZTERM_RPM_VERSION=$(echo $PKG_VERSION | tr - _)
         distroid=$(sh -c "source /etc/os-release && echo \$ID" | tr - _)
         distver=$(sh -c "source /etc/os-release && echo \$VERSION_ID" | tr - _)
 
@@ -301,7 +308,7 @@ EOF
 
         cat > pkg/debian/control <<EOF
 Package: $pkgname
-Version: ${TAG_NAME#nightly-}
+Version: ${PKG_VERSION}
 Conflicts: $conflicts
 Architecture: $(dpkg-architecture -q DEB_BUILD_ARCH_CPU)
 Maintainer: Wez Furlong <wez@wezfurlong.org>
@@ -387,7 +394,7 @@ EOF
       alpine)
         export SUDO=''
         abuild-keygen -a -n -b 8192
-        pkgver="${TAG_NAME#nightly-}"
+        pkgver="$PKG_VERSION"
         cat > APKBUILD <<EOF
 # Maintainer: Wez Furlong <wez@wezfurlong.org>
 pkgname=wezterm

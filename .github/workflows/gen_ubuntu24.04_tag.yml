@@ -3,7 +3,7 @@ name: ubuntu24.04_tag
 on:
   push:
     tags:
-      - "20*"
+      - "v*"
 
 jobs:
   build:
@@ -96,7 +96,7 @@ jobs:
   upload:
     runs-on: ubuntu-latest
     needs: build
-    if: github.repository == 'wezterm/wezterm'
+    if: github.repository == 'FlintyLemming/sideterm'
     permissions:
       contents: write
       pages: write
