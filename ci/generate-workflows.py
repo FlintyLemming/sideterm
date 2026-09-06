@@ -945,7 +945,7 @@ rustup default {toolchain}
             steps += [
                 RunStep(
                     "Workaround git permissions issue",
-                    "git config --global --add safe.directory /__w/wezterm/wezterm",
+                    'git config --global --add safe.directory "$GITHUB_WORKSPACE"',
                 )
             ]
         steps += [CheckoutStep(submodules=submodules, container=self.container)]
