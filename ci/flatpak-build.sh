@@ -20,7 +20,7 @@ flatpak install --user --noninteractive flathub \
 # Disabled for now: seems like it has an OpenSSL problem and fails to use SSL when
 # validating the screenshot URLs
 #flatpak install --user --noninteractive org.freedesktop.appstream-glib
-#flatpak run --env=G_DEBUG=fatal-criticals org.freedesktop.appstream-glib validate assets/wezterm.appdata.xml
+#flatpak run --env=G_DEBUG=fatal-criticals org.freedesktop.appstream-glib validate assets/sideterm.appdata.xml
 
 # Generate list of cargo dependencies for the isolated flatpak build
 if command -v flatpak-cargo-generator &>/dev/null; then
