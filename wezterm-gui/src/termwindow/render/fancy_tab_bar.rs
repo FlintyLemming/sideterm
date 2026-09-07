@@ -419,8 +419,7 @@ impl crate::TermWindow {
         } else {
             border.left.get() as f32
         };
-        let bar_width =
-            self.dimensions.pixel_width as f32 - bar_x - border.right.get() as f32;
+        let bar_width = self.dimensions.pixel_width as f32 - bar_x - border.right.get() as f32;
 
         let tabs = Element::new(&font, content)
             .display(DisplayType::Block)

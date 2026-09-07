@@ -277,8 +277,7 @@ impl crate::TermWindow {
 
         // Drawn right after the sidebar so it overlays both the sidebar
         // and the terminal panes; a no-op when no menu is open.
-        self.paint_sidebar_menu()
-            .context("paint_sidebar_menu")?;
+        self.paint_sidebar_menu().context("paint_sidebar_menu")?;
         self.paint_sidebar_profile_menu()
             .context("paint_sidebar_profile_menu")?;
 

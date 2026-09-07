@@ -48,8 +48,7 @@ impl crate::TermWindow {
         // Pill rows span the full width between the container's
         // horizontal padding: strip width minus edge padding, row
         // padding and the 1px border on each side.
-        let row_min_width =
-            (sidebar_width - 2. * (EDGE_PAD_H + ROW_PAD_H) * cell_w - 2.).max(0.);
+        let row_min_width = (sidebar_width - 2. * (EDGE_PAD_H + ROW_PAD_H) * cell_w - 2.).max(0.);
 
         let corner = |poly: &'static [crate::customglyph::Poly]| SizedPoly {
             width: Dimension::Cells(0.5),
@@ -63,10 +62,8 @@ impl crate::TermWindow {
             let bg = style.bg.to_linear().mul_alpha(bg_alpha);
             let hover_bg = style.hover_bg.to_linear().mul_alpha(bg_alpha);
 
-            let mut kids = vec![
-                Element::new(&font, ElementContent::Text(row.title.clone()))
-                    .display(DisplayType::Block),
-            ];
+            let mut kids = vec![Element::new(&font, ElementContent::Text(row.title.clone()))
+                .display(DisplayType::Block)];
             for line in &row.subtitle_lines {
                 kids.push(
                     Element::new(&subtitle_font, ElementContent::Text(line.clone()))
@@ -233,7 +230,11 @@ impl crate::TermWindow {
         }
 
         let labels: Vec<&str> = menu.entries.iter().map(|e| e.label.as_str()).collect();
-        self.paint_menu_card(&labels, (menu.x, menu.y), UIItemType::SidebarProfileMenuItem)
+        self.paint_menu_card(
+            &labels,
+            (menu.x, menu.y),
+            UIItemType::SidebarProfileMenuItem,
+        )
     }
 
     /// Shared painter for the sidebar's pop-up menus: one pill row per
@@ -290,7 +291,10 @@ impl crate::TermWindow {
         for label in labels {
             let probe = Element::new(&font, ElementContent::Text(label.to_string()));
             let w = self
-                .compute_element(&layout_context(self, &metrics, win_w, win_h, cell_w, 10), &probe)?
+                .compute_element(
+                    &layout_context(self, &metrics, win_w, win_h, cell_w, 10),
+                    &probe,
+                )?
                 .bounds
                 .width();
             row_min_width = row_min_width.max(w);

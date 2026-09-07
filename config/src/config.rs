@@ -1118,13 +1118,10 @@ impl Config {
         // If there is a pre-existing wezterm configuration, remember
         // where it is so that the GUI can offer to migrate it over.
         if !CONFIG_SKIP.load(Ordering::Relaxed) {
-            let legacy = legacy_config_candidates(
-                &crate::HOME_DIR,
-                &crate::legacy_config_dirs(),
-                exe_dir,
-            )
-            .into_iter()
-            .find(|p| p.exists());
+            let legacy =
+                legacy_config_candidates(&crate::HOME_DIR, &crate::legacy_config_dirs(), exe_dir)
+                    .into_iter()
+                    .find(|p| p.exists());
             if let Some(path) = &legacy {
                 log::warn!(
                     "No sideterm configuration found, but a pre-existing wezterm \

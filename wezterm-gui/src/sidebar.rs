@@ -314,21 +314,30 @@ mod test {
 
     #[test]
     fn style_for_active_row_uses_active_colors() {
-        let style = style_for_row(&row(SidebarItem::Entry("a".into()), true, true), &test_colors());
+        let style = style_for_row(
+            &row(SidebarItem::Entry("a".into()), true, true),
+            &test_colors(),
+        );
         assert_eq!(style.bg, test_colors().active_bg);
         assert_eq!(style.fg, test_colors().active_fg);
     }
 
     #[test]
     fn style_for_open_row_uses_background_and_foreground() {
-        let style = style_for_row(&row(SidebarItem::Entry("a".into()), false, true), &test_colors());
+        let style = style_for_row(
+            &row(SidebarItem::Entry("a".into()), false, true),
+            &test_colors(),
+        );
         assert_eq!(style.bg, test_colors().background);
         assert_eq!(style.fg, test_colors().foreground);
     }
 
     #[test]
     fn style_for_closed_row_uses_inactive_fg() {
-        let style = style_for_row(&row(SidebarItem::Entry("a".into()), false, false), &test_colors());
+        let style = style_for_row(
+            &row(SidebarItem::Entry("a".into()), false, false),
+            &test_colors(),
+        );
         assert_eq!(style.bg, test_colors().background);
         assert_eq!(style.fg, test_colors().inactive_fg);
     }

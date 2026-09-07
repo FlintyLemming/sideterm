@@ -41,6 +41,7 @@ pub mod domain;
 pub mod localpane;
 pub mod pane;
 pub mod renderable;
+pub mod sidebar;
 pub mod ssh;
 pub mod ssh_agent;
 pub mod tab;
@@ -48,7 +49,6 @@ pub mod termwiztermtab;
 pub mod tmux;
 pub mod tmux_commands;
 mod tmux_pty;
-pub mod sidebar;
 pub mod window;
 pub mod workspace_defaults;
 

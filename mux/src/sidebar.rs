@@ -72,8 +72,7 @@ pub fn compute_sidebar_entries(
         .map(|name| {
             let tab_count = live.iter().find(|(n, _)| n == &name).map(|(_, c)| *c);
             let metadata = metadata.get(&name);
-            let (cwd, command) =
-                resolve_workspace_defaults_impl(metadata, config_entries, &name);
+            let (cwd, command) = resolve_workspace_defaults_impl(metadata, config_entries, &name);
             let mut subtitle_lines = Vec::new();
             if let Some(base) = cwd.as_ref().and_then(|p| p.file_name()) {
                 subtitle_lines.push(format!("\u{25b8} {}", base.to_string_lossy()));
@@ -137,8 +136,12 @@ mod test {
     #[test]
     fn merges_config_and_live() {
         let live = vec![("api".to_string(), 3usize), ("scratch".to_string(), 1usize)];
-        let entries =
-            compute_sidebar_entries(&config_entries(), &live, &HashMap::new(), &SidebarOverrides::default());
+        let entries = compute_sidebar_entries(
+            &config_entries(),
+            &live,
+            &HashMap::new(),
+            &SidebarOverrides::default(),
+        );
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         // config order first, then live-only workspaces
         assert_eq!(names, vec!["api", "docs", "scratch"]);
@@ -186,15 +189,25 @@ mod test {
                 ..WorkspaceMetadata::default()
             },
         );
-        let entries =
-            compute_sidebar_entries(&config_entries(), &[], &metadata, &SidebarOverrides::default());
+        let entries = compute_sidebar_entries(
+            &config_entries(),
+            &[],
+            &metadata,
+            &SidebarOverrides::default(),
+        );
         assert_eq!(
             entries[0].subtitle_lines,
-            vec!["\u{25b8} elsewhere".to_string(), "$ npm run dev".to_string()]
+            vec![
+                "\u{25b8} elsewhere".to_string(),
+                "$ npm run dev".to_string()
+            ]
         );
     }
 
-    fn meta_with_profile(profile: SpawnCommand, label: Option<&str>) -> HashMap<String, WorkspaceMetadata> {
+    fn meta_with_profile(
+        profile: SpawnCommand,
+        label: Option<&str>,
+    ) -> HashMap<String, WorkspaceMetadata> {
         HashMap::from([(
             "api".to_string(),
             WorkspaceMetadata {
@@ -269,7 +282,8 @@ mod test {
             order: vec!["scratch".to_string(), "docs".to_string()],
             hidden: HashSet::from(["api".to_string()]),
         };
-        let entries = compute_sidebar_entries(&config_entries(), &live, &HashMap::new(), &overrides);
+        let entries =
+            compute_sidebar_entries(&config_entries(), &live, &HashMap::new(), &overrides);
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, vec!["scratch", "docs"]);
     }
@@ -281,15 +295,24 @@ mod test {
         // cold start: order materializes from current display order
         let mut order = vec![];
         move_in_order(&current, &mut order, "b", -1);
-        assert_eq!(order, vec!["b".to_string(), "a".to_string(), "c".to_string()]);
+        assert_eq!(
+            order,
+            vec!["b".to_string(), "a".to_string(), "c".to_string()]
+        );
 
         // clamped at the top: no-op
         let mut order = vec!["b".to_string(), "a".to_string(), "c".to_string()];
         move_in_order(&current, &mut order, "b", -1);
-        assert_eq!(order, vec!["b".to_string(), "a".to_string(), "c".to_string()]);
+        assert_eq!(
+            order,
+            vec!["b".to_string(), "a".to_string(), "c".to_string()]
+        );
 
         // move down
         move_in_order(&current, &mut order, "b", 1);
-        assert_eq!(order, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+        assert_eq!(
+            order,
+            vec!["a".to_string(), "b".to_string(), "c".to_string()]
+        );
     }
 }

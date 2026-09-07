@@ -218,9 +218,7 @@ impl SidebarDialog {
                 Completion::Prompt(callback) => {
                     let value = if accepted {
                         match &self.kind {
-                            DialogKind::Prompt(input) => {
-                                Some(input.borrow().text().to_string())
-                            }
+                            DialogKind::Prompt(input) => Some(input.borrow().text().to_string()),
                             DialogKind::Confirm => None,
                         }
                     } else {
@@ -507,10 +505,8 @@ impl SidebarDialog {
 
         // Lay out at the origin with the whole window available, then
         // clamp the anchor so the card stays fully inside the window.
-        let mut computed = term_window.compute_element(
-            &layout_context(term_window, &metrics, win_w, win_h),
-            &frame,
-        )?;
+        let mut computed = term_window
+            .compute_element(&layout_context(term_window, &metrics, win_w, win_h), &frame)?;
 
         let card_w = computed.bounds.width();
         let card_h = computed.bounds.height();
@@ -617,13 +613,9 @@ impl Modal for SidebarDialog {
             },
             DialogKind::Confirm => match (key, mods) {
                 (KeyCode::Escape, KeyModifiers::NONE)
-                | (KeyCode::Char('n' | 'N'), KeyModifiers::NONE) => {
-                    self.finish(term_window, false)
-                }
+                | (KeyCode::Char('n' | 'N'), KeyModifiers::NONE) => self.finish(term_window, false),
                 (KeyCode::Enter, KeyModifiers::NONE)
-                | (KeyCode::Char('y' | 'Y'), KeyModifiers::NONE) => {
-                    self.finish(term_window, true)
-                }
+                | (KeyCode::Char('y' | 'Y'), KeyModifiers::NONE) => self.finish(term_window, true),
                 _ => {}
             },
         }

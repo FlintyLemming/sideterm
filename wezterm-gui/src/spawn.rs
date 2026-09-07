@@ -118,7 +118,10 @@ pub async fn spawn_command_internal(
     // A profile that names a specific domain (e.g. an auto-detected
     // WSL distribution) retargets the spawn there; otherwise the
     // spawn request's own domain resolution is kept.
-    let domain = overlay.domain.clone().unwrap_or_else(|| spawn.domain.clone());
+    let domain = overlay
+        .domain
+        .clone()
+        .unwrap_or_else(|| spawn.domain.clone());
 
     match spawn_where {
         SpawnWhere::SplitPane(direction) => {

@@ -926,9 +926,7 @@ fn maybe_offer_legacy_config_migration() {
                     ));
                     return;
                 }
-                ui.output_str(
-                    "\r\nConfiguration copied; reloading.\r\n",
-                );
+                ui.output_str("\r\nConfiguration copied; reloading.\r\n");
                 ui.output_str(&format!(
                     "\r\n{}\r\n",
                     textwrap::fill(
