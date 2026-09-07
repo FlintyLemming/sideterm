@@ -68,7 +68,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:$PATH
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --no-modify-path --default-toolchain stable --profile minimal --component rustfmt clippy \
+        | sh -s -- -y --no-modify-path --default-toolchain stable --profile minimal -c rustfmt -c clippy \
     && curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/cargo/bin \
     && chmod -R a+rwX "$RUSTUP_HOME" "$CARGO_HOME"
 
