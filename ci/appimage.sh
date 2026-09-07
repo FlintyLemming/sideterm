@@ -16,7 +16,7 @@ install -Dm644 assets/sideterm-nautilus.py AppDir/usr/share/nautilus-python/exte
 
 [ -x /tmp/linuxdeploy ] || ( curl -L 'https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage' -o /tmp/linuxdeploy && chmod +x /tmp/linuxdeploy )
 
-TAG_NAME=${TAG_NAME:-$(git -c "core.abbrev=8" show -s "--format=%cd-%h" "--date=format:%Y%m%d-%H%M%S")}
+TAG_NAME=${TAG_NAME:-$(bash ci/tag-name.sh)}
 distro=$(lsb_release -is 2>/dev/null || sh -c "source /etc/os-release && echo \$NAME")
 distver=$(lsb_release -rs 2>/dev/null || sh -c "source /etc/os-release && echo \$VERSION_ID")
 
