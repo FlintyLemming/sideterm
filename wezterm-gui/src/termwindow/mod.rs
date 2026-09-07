@@ -1563,14 +1563,14 @@ impl TermWindow {
             | MuxNotification::SaveToDownloads { .. }
             | MuxNotification::WindowCreated(_)
             | MuxNotification::ActiveWorkspaceChanged(_)
-            | MuxNotification::WorkspaceRenamed { .. }
-            | MuxNotification::SidebarChanged
             | MuxNotification::Empty
             | MuxNotification::WindowWorkspaceChanged(_) => return true,
             MuxNotification::Alert {
                 alert: Alert::PaletteChanged { .. },
                 ..
-            } => {
+            }
+            | MuxNotification::WorkspaceRenamed { .. }
+            | MuxNotification::SidebarChanged => {
                 // fall through
             }
         }
@@ -3399,6 +3399,7 @@ impl TermWindow {
                     .as_ref()
                     .map(|name| name.to_string())
                     .unwrap_or_else(|| mux.generate_workspace_name());
+                mux.remember_workspace(&name);
                 let switcher = crate::frontend::WorkspaceSwitcher::new(&name);
                 mux.set_active_workspace(&name);
 

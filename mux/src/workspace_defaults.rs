@@ -19,6 +19,17 @@ pub struct WorkspaceMetadata {
     pub profile_label: Option<String>,
 }
 
+impl WorkspaceMetadata {
+    /// True when no runtime override is set; such entries are omitted
+    /// from the persisted sidebar state.
+    pub fn is_unset(&self) -> bool {
+        self.cwd.is_none()
+            && self.default_command.is_none()
+            && self.profile.is_none()
+            && self.profile_label.is_none()
+    }
+}
+
 /// Resolve the effective (cwd, default_command) for `workspace`.
 ///
 /// Priority, per field: runtime `metadata` override > `config_entries`
@@ -204,6 +215,16 @@ mod test {
             resolve_workspace_defaults_impl(None, &config_entries(), "nope"),
             (None, None)
         );
+    }
+
+    #[test]
+    fn unset_metadata_has_no_overrides() {
+        assert!(WorkspaceMetadata::default().is_unset());
+        assert!(!WorkspaceMetadata {
+            cwd: Some(PathBuf::from("/tmp")),
+            ..WorkspaceMetadata::default()
+        }
+        .is_unset());
     }
 
     #[test]

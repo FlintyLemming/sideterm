@@ -20,10 +20,10 @@ A sidebar runs down the full left edge of the window (the tab bar sits to its ri
   - Rename workspace
   - Set default directory
   - Set default command
-  - Move up / Move down (reorders the sidebar list; in-memory only)
+  - Move up / Move down (reorders the sidebar list)
   - Remove from list (hides the entry; the workspace itself is not killed)
 - **＋ button** at the top: create a new workspace by typing a name.
-- Changes made through the menu (cwd / command / order) are **runtime overrides held in memory** — they are never written back to your Lua config. Resolution order: runtime override > `workspaces` config > unset.
+- Changes made through the menu (cwd / command / profile / order / hidden entries) and workspaces created from the sidebar are **persisted** to `sidebar-workspaces.json` in the SideTerm data directory (for example `~/.local/share/sideterm/` on Linux). They are never written back to your Lua config. Resolution order: persisted runtime override > `workspaces` config > unset.
 
 ### 2. Per-workspace default cwd and default command
 
@@ -111,7 +111,7 @@ return {
 ## Compatibility and upstream sync
 
 - `main` carries the SideTerm changes; the `upstream` branch tracks upstream WezTerm and is merged back regularly.
-- The mux's existing workspace persistence, session restore, and all other WezTerm features are untouched.
+- The mux's existing workspace persistence, session restore, and all other WezTerm features are untouched. The sidebar's own workspace list, order, hidden entries, and default cwd / command / profile are stored separately in `sidebar-workspaces.json` in the data directory.
 
 ## Installation
 

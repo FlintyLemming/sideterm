@@ -20,10 +20,10 @@
   - 重命名工作区（Rename workspace）
   - 设置默认目录（Set default directory）
   - 设置默认命令（Set default command）
-  - 上移 / 下移（调整侧边栏顺序，仅保存在内存中）
+  - 上移 / 下移（调整侧边栏顺序）
   - 从列表移除（仅隐藏该条目，不会杀死工作区）
 - **顶部 ＋ 按钮**：输入名称新建工作区。
-- 通过菜单做的修改（cwd / 命令 / 顺序）都是**只存内存的运行时覆盖**，不会写回 Lua 配置文件。生效优先级：运行时覆盖 > `workspaces` 配置 > 未设置。
+- 通过菜单做的修改（cwd / 命令 / profile / 顺序 / 隐藏）以及从侧边栏新建的工作区会**持久化**到 SideTerm 数据目录下的 `sidebar-workspaces.json`（Linux 上例如 `~/.local/share/sideterm/`），不会写回 Lua 配置文件。生效优先级：已持久化的运行时覆盖 > `workspaces` 配置 > 未设置。
 
 ### 2. 每个工作区的默认 cwd 和默认命令
 
@@ -111,7 +111,7 @@ return {
 ## 兼容性与上游同步
 
 - `main` 分支承载 SideTerm 的改动；`upstream` 分支跟踪上游 WezTerm，并定期合并回来。
-- mux 现有的工作区持久化、会话恢复以及其他所有 WezTerm 功能均未改动。
+- mux 现有的工作区持久化、会话恢复以及其他所有 WezTerm 功能均未改动。侧边栏自己的工作区列表、顺序、隐藏状态和默认 cwd / 命令 / profile 另外保存在数据目录的 `sidebar-workspaces.json` 中。
 
 ## 安装
 

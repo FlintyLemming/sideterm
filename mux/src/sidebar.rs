@@ -1,5 +1,5 @@
 //! Sidebar entry model: merges configured workspaces with live mux
-//! workspaces and applies in-memory display overrides.
+//! workspaces and applies display overrides (persisted across restarts).
 
 use crate::workspace_defaults::{
     resolve_workspace_defaults_impl, workspace_profile_display, WorkspaceMetadata,
@@ -23,11 +23,35 @@ pub struct SidebarEntry {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SidebarOverrides {
     /// Explicit display order. Names not listed keep their natural
-    /// order after the listed ones.
+    /// order after the listed ones. This does not introduce names;
+    /// see `remembered`.
     pub order: Vec<String>,
     /// Entries hidden via "remove from list"; the workspace itself
     /// is never killed.
     pub hidden: HashSet<String>,
+    /// Workspace names that should stay in the sidebar even when they
+    /// are not live and not declared in the Lua config (created via
+    /// the sidebar, or given runtime defaults).
+    pub remembered: Vec<String>,
+}
+
+impl SidebarOverrides {
+    /// Keep order / hidden / remembered in sync when a workspace is renamed.
+    pub fn rename(&mut self, old_workspace: &str, new_workspace: &str) {
+        for name in &mut self.order {
+            if name == old_workspace {
+                *name = new_workspace.to_string();
+            }
+        }
+        for name in &mut self.remembered {
+            if name == old_workspace {
+                *name = new_workspace.to_string();
+            }
+        }
+        if self.hidden.remove(old_workspace) {
+            self.hidden.insert(new_workspace.to_string());
+        }
+    }
 }
 
 /// Merge configured workspaces with live mux workspaces into the
@@ -35,8 +59,9 @@ pub struct SidebarOverrides {
 ///
 /// Natural order: config entries (file order, first-wins on
 /// duplicates, empty names skipped), then live-only workspaces in the
-/// given order. `overrides.order` pulls named entries to the front in
-/// its own order; `overrides.hidden` entries are dropped.
+/// given order, then remembered names from `overrides.remembered`.
+/// `overrides.order` pulls named entries to the front in its own
+/// order; `overrides.hidden` entries are dropped.
 pub fn compute_sidebar_entries(
     config_entries: &[WorkspaceEntry],
     live: &[(String, usize)],
@@ -51,6 +76,16 @@ pub fn compute_sidebar_entries(
     }
     for (name, _) in live {
         if !names.contains(name) {
+            names.push(name.clone());
+        }
+    }
+    // Remembered names (created via the sidebar, or given runtime
+    // defaults) stay listed even when they are not live and not in
+    // the Lua config. `order` is applied afterwards and must not
+    // itself introduce names: otherwise a Lua-removed config entry
+    // that happened to be snapshotted into `order` would linger.
+    for name in &overrides.remembered {
+        if !name.trim().is_empty() && !names.contains(name) {
             names.push(name.clone());
         }
     }
@@ -90,6 +125,16 @@ pub fn compute_sidebar_entries(
             }
         })
         .collect()
+}
+
+/// Append `name` to `remembered` if it is not already listed.
+/// Returns whether `remembered` changed.
+pub fn remember_name(remembered: &mut Vec<String>, name: &str) -> bool {
+    if name.trim().is_empty() || remembered.iter().any(|n| n == name) {
+        return false;
+    }
+    remembered.push(name.to_string());
+    true
 }
 
 /// Move `name` by `delta` positions within `order`, first
@@ -281,11 +326,64 @@ mod test {
         let overrides = SidebarOverrides {
             order: vec!["scratch".to_string(), "docs".to_string()],
             hidden: HashSet::from(["api".to_string()]),
+            remembered: vec![],
         };
         let entries =
             compute_sidebar_entries(&config_entries(), &live, &HashMap::new(), &overrides);
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, vec!["scratch", "docs"]);
+    }
+
+    #[test]
+    fn remembered_names_appear_when_not_live_or_configured() {
+        let overrides = SidebarOverrides {
+            order: vec!["scratch".to_string(), "api".to_string()],
+            remembered: vec!["scratch".to_string()],
+            hidden: HashSet::new(),
+        };
+        let entries = compute_sidebar_entries(&config_entries(), &[], &HashMap::new(), &overrides);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        // `scratch` is remembered-only; `order` then pulls listed names
+        // to the front. `docs` stays because it is in the config.
+        assert_eq!(names, vec!["scratch", "api", "docs"]);
+        assert_eq!(entries[0].tab_count, None);
+    }
+
+    #[test]
+    fn order_does_not_introduce_unknown_names() {
+        // A stale order entry that is not config, live, or remembered
+        // must not reappear in the sidebar.
+        let overrides = SidebarOverrides {
+            order: vec!["gone".to_string(), "api".to_string()],
+            remembered: vec![],
+            hidden: HashSet::new(),
+        };
+        let entries = compute_sidebar_entries(&config_entries(), &[], &HashMap::new(), &overrides);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["api", "docs"]);
+    }
+
+    #[test]
+    fn remember_name_appends_uniquely() {
+        let mut remembered = vec!["a".to_string()];
+        assert!(remember_name(&mut remembered, "b"));
+        assert!(!remember_name(&mut remembered, "b"));
+        assert!(!remember_name(&mut remembered, "  "));
+        assert_eq!(remembered, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn rename_updates_order_hidden_and_remembered() {
+        let mut overrides = SidebarOverrides {
+            order: vec!["a".into(), "b".into()],
+            remembered: vec!["a".into()],
+            hidden: HashSet::from(["a".to_string()]),
+        };
+        overrides.rename("a", "alpha");
+        assert_eq!(overrides.order, vec!["alpha".to_string(), "b".to_string()]);
+        assert_eq!(overrides.remembered, vec!["alpha".to_string()]);
+        assert!(overrides.hidden.contains("alpha"));
+        assert!(!overrides.hidden.contains("a"));
     }
 
     #[test]

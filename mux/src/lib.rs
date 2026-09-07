@@ -42,6 +42,7 @@ pub mod localpane;
 pub mod pane;
 pub mod renderable;
 pub mod sidebar;
+mod sidebar_persist;
 pub mod ssh;
 pub mod ssh_agent;
 pub mod tab;
@@ -102,7 +103,7 @@ pub enum MuxNotification {
     },
     /// Runtime workspace metadata (sidebar overrides, display order,
     /// hidden entries) changed; GUI subscribers should rebuild sidebar
-    /// state.
+    /// state. These overrides are persisted to the data directory.
     SidebarChanged,
 }
 
@@ -453,6 +454,8 @@ impl Mux {
             None
         };
 
+        let (overrides, metadata) = sidebar_persist::load_default();
+
         Self {
             tabs: RwLock::new(HashMap::new()),
             panes: RwLock::new(HashMap::new()),
@@ -465,8 +468,8 @@ impl Mux {
             clients: RwLock::new(HashMap::new()),
             identity: RwLock::new(None),
             num_panes_by_workspace: RwLock::new(HashMap::new()),
-            workspace_metadata: RwLock::new(HashMap::new()),
-            sidebar_overrides: RwLock::new(sidebar::SidebarOverrides::default()),
+            workspace_metadata: RwLock::new(metadata),
+            sidebar_overrides: RwLock::new(overrides),
             main_thread_id: std::thread::current().id(),
             agent,
         }
@@ -615,7 +618,16 @@ impl Mux {
 
     /// Generate a new unique workspace name
     pub fn generate_workspace_name(&self) -> String {
-        let used = self.iter_workspaces();
+        let mut used = self.iter_workspaces();
+        {
+            let overrides = self.sidebar_overrides.read();
+            used.extend(overrides.order.iter().cloned());
+            used.extend(overrides.remembered.iter().cloned());
+            used.extend(overrides.hidden.iter().cloned());
+        }
+        used.extend(self.workspace_metadata.read().keys().cloned());
+        used.sort();
+        used.dedup();
         for candidate in names::Generator::default() {
             if !used.contains(&candidate) {
                 return candidate;
@@ -686,21 +698,63 @@ impl Mux {
             }
         }
 
-        // Let runtime metadata follow the workspace across the rename
+        // Let runtime metadata and sidebar overrides follow the rename
         let metadata = self.workspace_metadata.write().remove(old_workspace);
         if let Some(metadata) = metadata {
             self.workspace_metadata
                 .write()
                 .insert(new_workspace.to_string(), metadata);
         }
+        self.sidebar_overrides
+            .write()
+            .rename(old_workspace, new_workspace);
+        self.persist_sidebar_state();
     }
 
-    /// Set (in-memory only) runtime overrides for a workspace's default
-    /// cwd / default command. Never persisted to the Lua config.
+    fn persist_sidebar_state(&self) {
+        let metadata = self.workspace_metadata.read().clone();
+        let overrides = self.sidebar_overrides.read().clone();
+        sidebar_persist::save_default(&overrides, &metadata);
+    }
+
+    /// Remember `name` so it stays in the sidebar after restart,
+    /// unless it is already declared in the Lua `workspaces` config.
+    /// Returns whether the remembered list changed.
+    fn ensure_workspace_remembered(&self, name: &str) -> bool {
+        if name.trim().is_empty() {
+            return false;
+        }
+        // Config-declared workspaces are already persistent via Lua;
+        // remembering them would make them linger after being removed
+        // from the config.
+        let configured = config::configuration()
+            .workspaces
+            .iter()
+            .any(|e| e.name == name);
+        if configured {
+            return false;
+        }
+        let mut overrides = self.sidebar_overrides.write();
+        sidebar::remember_name(&mut overrides.remembered, name)
+    }
+
+    /// Keep `name` in the sidebar after restart. Called when a
+    /// workspace is created or switched to from the GUI.
+    pub fn remember_workspace(&self, name: &str) {
+        if self.ensure_workspace_remembered(name) {
+            self.persist_sidebar_state();
+            self.notify(MuxNotification::SidebarChanged);
+        }
+    }
+
+    /// Set runtime overrides for a workspace's default cwd / command /
+    /// profile. Persisted to the data directory, never to the Lua config.
     pub fn set_workspace_metadata(&self, workspace: &str, metadata: WorkspaceMetadata) {
         self.workspace_metadata
             .write()
             .insert(workspace.to_string(), metadata);
+        self.ensure_workspace_remembered(workspace);
+        self.persist_sidebar_state();
         self.notify(MuxNotification::SidebarChanged);
     }
 
@@ -724,7 +778,7 @@ impl Mux {
     }
 
     /// The workspace's default launch profile, from runtime metadata
-    /// only (never persisted to the Lua config).
+    /// (persisted to the data directory, never to the Lua config).
     pub fn resolve_workspace_profile(
         &self,
         workspace: &str,
@@ -744,7 +798,7 @@ impl Mux {
     }
 
     /// The sidebar's display list: configured workspaces merged with
-    /// live ones, with in-memory order/hide overrides applied.
+    /// live ones, with persisted order/hide overrides applied.
     pub fn compute_sidebar_entries(&self) -> Vec<sidebar::SidebarEntry> {
         let config = config::configuration();
         let live: Vec<(String, usize)> = self
@@ -761,7 +815,7 @@ impl Mux {
     }
 
     /// Move a sidebar entry up (delta < 0) or down (delta > 0) in the
-    /// in-memory display order.
+    /// persisted display order.
     pub fn move_workspace_in_sidebar(&self, name: &str, delta: isize) {
         let current: Vec<String> = self
             .compute_sidebar_entries()
@@ -772,6 +826,7 @@ impl Mux {
             let mut overrides = self.sidebar_overrides.write();
             sidebar::move_in_order(&current, &mut overrides.order, name, delta);
         }
+        self.persist_sidebar_state();
         self.notify(MuxNotification::SidebarChanged);
     }
 
@@ -781,6 +836,7 @@ impl Mux {
             .write()
             .hidden
             .insert(name.to_string());
+        self.persist_sidebar_state();
         self.notify(MuxNotification::SidebarChanged);
     }
 
