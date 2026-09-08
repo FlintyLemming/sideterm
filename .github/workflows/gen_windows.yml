@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: "checkout repo"
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           submodules: "recursive"
       - name: "Install Rust"
@@ -36,9 +36,9 @@ jobs:
         with:
           target: "x86_64-pc-windows-msvc"
       - name: "Compile with sccache"
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.11
       - name: "Cache Rust Dependencies"
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: cache-cargo-vendor
         with:
           path: |
