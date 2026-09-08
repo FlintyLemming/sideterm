@@ -136,13 +136,13 @@ class ActionStep(Step):
 class CacheStep(ActionStep):
     def __init__(self, name, path, key, id=None):
         super().__init__(
-            name, action="actions/cache@v4", params={"path": path, "key": key}, id=id
+            name, action="actions/cache@v6", params={"path": path, "key": key}, id=id
         )
 
 
 class SccacheStep(ActionStep):
     def __init__(self, name):
-        super().__init__(name, action="mozilla-actions/sccache-action@v0.0.9")
+        super().__init__(name, action="mozilla-actions/sccache-action@v0.0.11")
 
 
 class CheckoutStep(ActionStep):
@@ -150,7 +150,7 @@ class CheckoutStep(ActionStep):
         params = {}
         if submodules:
             params["submodules"] = "recursive"
-        super().__init__(name, action=f"actions/checkout@v5", params=params)
+        super().__init__(name, action="actions/checkout@v7", params=params)
 
 
 class InstallCrateStep(ActionStep):
