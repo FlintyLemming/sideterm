@@ -7,6 +7,20 @@ use crate::termwindow::render::corners::*;
 use crate::termwindow::UIItemType;
 use crate::utilsprites::RenderMetrics;
 use config::{Dimension, DimensionContext};
+use window::color::LinearRgba;
+
+/// Chrome (sidebar, fancy tab bar) paints at z-index 10. Each z-index
+/// is a TripleLayer that draws every background quad, then every
+/// glyph, so a popup that shares that layer cannot cover sidebar text —
+/// the workspace titles would show through the menu fill. Float the
+/// menu above chrome and below modals (100).
+const SIDEBAR_MENU_ZINDEX: i8 = 50;
+
+/// Force alpha to 1 so a translucent palette / window opacity cannot
+/// leave the menu see-through.
+fn opaque(color: LinearRgba) -> LinearRgba {
+    LinearRgba(color.0, color.1, color.2, 1.0)
+}
 
 impl crate::TermWindow {
     /// Build the sidebar as a box-model element tree — rounded "pill"
@@ -148,9 +162,9 @@ impl crate::TermWindow {
                 metrics: &metrics,
                 gl_state: self.render_state.as_ref().unwrap(),
                 // Chrome layer, like the fancy tab bar; above the
-                // panes, below modals (100). The sidebar menu paints
-                // into the same layer after the sidebar, so its quads
-                // land on top.
+                // panes, below modals (100). The sidebar menu uses a
+                // higher z-index so it is not mixed into this layer's
+                // TripleLayer (all fills, then all glyphs).
                 zindex: 10,
             },
             &container,
@@ -292,7 +306,7 @@ impl crate::TermWindow {
             let probe = Element::new(&font, ElementContent::Text(label.to_string()));
             let w = self
                 .compute_element(
-                    &layout_context(self, &metrics, win_w, win_h, cell_w, 10),
+                    &layout_context(self, &metrics, win_w, win_h, cell_w, SIDEBAR_MENU_ZINDEX),
                     &probe,
                 )?
                 .bounds
@@ -312,7 +326,9 @@ impl crate::TermWindow {
             bottom_right: corner(BOTTOM_RIGHT_ROUNDED_CORNER),
         };
 
-        let bg = colors.background.to_linear();
+        let bg = opaque(colors.background.to_linear());
+        let hover_bg = opaque(colors.hover_bg.to_linear());
+        let menu_border = opaque(colors.menu_border.to_linear());
         let mut row_eles = vec![];
         for (idx, label) in labels.iter().enumerate() {
             row_eles.push(
@@ -343,8 +359,8 @@ impl crate::TermWindow {
                         text: colors.foreground.to_linear().into(),
                     })
                     .hover_colors(Some(ElementColors {
-                        border: BorderColor::new(colors.hover_bg.to_linear()),
-                        bg: colors.hover_bg.to_linear().into(),
+                        border: BorderColor::new(hover_bg),
+                        bg: hover_bg.into(),
                         text: colors.hover_fg.to_linear().into(),
                     })),
             );
@@ -382,17 +398,17 @@ impl crate::TermWindow {
             .padding(BoxDimension::new(Dimension::Pixels(1.)))
             .border_corners(Some(rounded()))
             .colors(ElementColors {
-                border: BorderColor::new(colors.menu_border.to_linear()),
-                bg: colors.menu_border.to_linear().into(),
+                border: BorderColor::new(menu_border),
+                bg: menu_border.into(),
                 text: colors.foreground.to_linear().into(),
             });
 
         // Lay out at the origin, then clamp the anchor so the menu
-        // stays fully inside the window (spec §3). Chrome layer, same
-        // as the sidebar, which paints into it first — the menu lands
-        // on top.
+        // stays fully inside the window (spec §3). A dedicated
+        // z-index above chrome (10) so the menu's fill is drawn after
+        // sidebar glyphs, not mixed into the same TripleLayer.
         let mut computed = self.compute_element(
-            &layout_context(self, &metrics, win_w, win_h, cell_w, 10),
+            &layout_context(self, &metrics, win_w, win_h, cell_w, SIDEBAR_MENU_ZINDEX),
             &frame,
         )?;
 
@@ -411,5 +427,26 @@ impl crate::TermWindow {
         let gl_state = self.render_state.as_ref().unwrap();
         self.render_element(&computed, gl_state, None)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn menu_sits_above_chrome_and_below_modals() {
+        assert!(SIDEBAR_MENU_ZINDEX > 10);
+        assert!(SIDEBAR_MENU_ZINDEX < 100);
+    }
+
+    #[test]
+    fn opaque_forces_alpha_to_one() {
+        let translucent = LinearRgba(0.2, 0.4, 0.6, 0.3);
+        let filled = opaque(translucent);
+        assert_eq!(filled.0, 0.2);
+        assert_eq!(filled.1, 0.4);
+        assert_eq!(filled.2, 0.6);
+        assert_eq!(filled.3, 1.0);
     }
 }
