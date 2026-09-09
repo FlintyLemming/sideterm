@@ -275,8 +275,10 @@ impl crate::TermWindow {
             self.paint_sidebar().context("paint_sidebar")?;
         }
 
-        // Drawn right after the sidebar so it overlays both the sidebar
-        // and the terminal panes; a no-op when no menu is open.
+        // Drawn after the sidebar. The menu uses a higher z-index than
+        // chrome so its fill covers sidebar text; same-layer painting
+        // cannot, because TripleLayer draws all glyphs after all fills.
+        // A no-op when no menu is open.
         self.paint_sidebar_menu().context("paint_sidebar_menu")?;
         self.paint_sidebar_profile_menu()
             .context("paint_sidebar_profile_menu")?;
