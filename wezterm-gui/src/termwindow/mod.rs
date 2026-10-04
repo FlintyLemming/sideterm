@@ -409,6 +409,10 @@ pub struct TermWindow {
     sidebar_element: Option<box_model::ComputedElement>,
     sidebar_menu: Option<crate::sidebar_menu::SidebarMenuState>,
     sidebar_profile_menu: Option<crate::sidebar_menu::SidebarProfileMenuState>,
+    /// A press consumed by the sidebar menu; its release is swallowed
+    /// too, even if the menu has closed by then, so it can't land on
+    /// whatever was under the menu.
+    sidebar_menu_swallow_release: Option<MousePress>,
     show_scroll_bar: bool,
     tab_bar: TabBarState,
     fancy_tab_bar: Option<box_model::ComputedElement>,
@@ -745,6 +749,7 @@ impl TermWindow {
             sidebar_element: None,
             sidebar_menu: None,
             sidebar_profile_menu: None,
+            sidebar_menu_swallow_release: None,
             show_scroll_bar: config.enable_scroll_bar,
             tab_bar: TabBarState::default(),
             fancy_tab_bar: None,
@@ -1842,6 +1847,11 @@ impl TermWindow {
         if let Some(window) = self.window.as_ref() {
             window.invalidate();
         }
+    }
+
+    /// True while the context menu or its profile flyout is open.
+    pub fn sidebar_menu_is_open(&self) -> bool {
+        self.sidebar_menu.is_some() || self.sidebar_profile_menu.is_some()
     }
 
     /// Close the context menu and its profile flyout together; they

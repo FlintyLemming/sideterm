@@ -73,6 +73,39 @@ impl super::TermWindow {
     pub fn mouse_event_impl(&mut self, event: MouseEvent, context: &dyn WindowOps) {
         log::trace!("{:?}", event);
 
+        // A press the sidebar menu consumed (e.g. clicking an item,
+        // which closes the menu) still owns the mouse until its
+        // release, so neither the drag nor the release reaches the
+        // sidebar row, pane or dialog that was under the menu.
+        if let Some(press) = self.sidebar_menu_swallow_release {
+            let held = match press {
+                MousePress::Left => WMB::LEFT,
+                MousePress::Right => WMB::RIGHT,
+                MousePress::Middle => WMB::MIDDLE,
+            };
+            match &event.kind {
+                WMEK::Release(released) if *released == press => {
+                    self.sidebar_menu_swallow_release = None;
+                    self.current_mouse_capture = None;
+                    self.current_mouse_buttons.retain(|p| p != released);
+                    self.current_mouse_event.replace(event.clone());
+                    context.invalidate();
+                    return;
+                }
+                // Moves are the menu's own business while it is open.
+                WMEK::Move if !self.sidebar_menu_is_open() => {
+                    if event.mouse_buttons.contains(held) {
+                        self.current_mouse_event.replace(event.clone());
+                        return;
+                    }
+                    // The release went missing (e.g. it happened
+                    // outside the window); stop swallowing.
+                    self.sidebar_menu_swallow_release = None;
+                }
+                _ => {}
+            }
+        }
+
         // A modal that captures the mouse (e.g. the sidebar dialog)
         // owns all mouse input while it is active.
         if let Some(modal) = self.get_modal() {
@@ -90,8 +123,19 @@ impl super::TermWindow {
         // open it owns the mouse: hover tracking, click-to-dispatch,
         // click-outside-to-dismiss, and swallowing everything else so
         // nothing leaks to the pane.
-        if self.sidebar_menu.is_some() || self.sidebar_profile_menu.is_some() {
+        if self.sidebar_menu_is_open() {
             self.current_mouse_event.replace(event.clone());
+            match &event.kind {
+                WMEK::Press(press) => self.sidebar_menu_swallow_release = Some(*press),
+                // The normal path below never sees this release (e.g.
+                // of the right-click that opened the menu), so do its
+                // bookkeeping here.
+                WMEK::Release(press) => {
+                    self.current_mouse_capture = None;
+                    self.current_mouse_buttons.retain(|p| p != press);
+                }
+                _ => {}
+            }
             self.mouse_event_sidebar_menu(&event, context);
             return;
         }

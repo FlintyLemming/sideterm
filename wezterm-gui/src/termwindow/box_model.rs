@@ -845,7 +845,8 @@ impl super::TermWindow {
                                 && mouse_y <= element.bounds.max_y()
                         }
                         None => false,
-                    } && matches!(self.current_mouse_capture, None | Some(MouseCapture::UI));
+                    } && matches!(self.current_mouse_capture, None | Some(MouseCapture::UI))
+                        && !self.hover_is_occluded(element.zindex);
                 if hovering {
                     hc
                 } else {

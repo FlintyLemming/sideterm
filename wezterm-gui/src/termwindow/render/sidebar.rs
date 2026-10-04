@@ -14,7 +14,7 @@ use window::color::LinearRgba;
 /// glyph, so a popup that shares that layer cannot cover sidebar text —
 /// the workspace titles would show through the menu fill. Float the
 /// menu above chrome and below modals (100).
-const SIDEBAR_MENU_ZINDEX: i8 = 50;
+pub const SIDEBAR_MENU_ZINDEX: i8 = 50;
 
 /// Force alpha to 1 so a translucent palette / window opacity cannot
 /// leave the menu see-through.
@@ -23,6 +23,13 @@ fn opaque(color: LinearRgba) -> LinearRgba {
 }
 
 impl crate::TermWindow {
+    /// While the sidebar menu is open it owns the mouse, so anything
+    /// painted beneath it (sidebar rows, tab bar) must not show a hover
+    /// state for a cursor that is really over the menu.
+    pub fn hover_is_occluded(&self, zindex: i8) -> bool {
+        self.sidebar_menu_is_open() && zindex < SIDEBAR_MENU_ZINDEX
+    }
+
     /// Build the sidebar as a box-model element tree — rounded "pill"
     /// rows shaped in the title font, the same machinery the fancy tab
     /// bar uses — and compute its layout. The result is cached in
@@ -221,7 +228,12 @@ impl crate::TermWindow {
             .iter()
             .map(|(_, label)| *label)
             .collect();
-        self.paint_menu_card(&labels, (menu.x, menu.y), UIItemType::SidebarMenuItem)
+        self.paint_menu_card(
+            &labels,
+            (menu.x, menu.y),
+            menu.hovered,
+            UIItemType::SidebarMenuItem,
+        )
     }
 
     /// Paint the "Set default profile" flyout: same card/row visual
@@ -247,6 +259,7 @@ impl crate::TermWindow {
         self.paint_menu_card(
             &labels,
             (menu.x, menu.y),
+            menu.hovered,
             UIItemType::SidebarProfileMenuItem,
         )
     }
@@ -255,10 +268,18 @@ impl crate::TermWindow {
     /// label inside a rounded, 1px-outlined card, clamped to the
     /// window. `item_type_of` maps a row index to its UIItemType so
     /// input routing can tell the menus apart.
+    ///
+    /// The highlighted row is `hovered`, the row the mouse handler
+    /// resolved from the hit-test rects, rather than `hover_colors`:
+    /// that re-tests the mouse against fractional layout bounds at
+    /// paint time, which can disagree with the integer hit-test rects
+    /// near a row edge. The handler only repaints when `hovered`
+    /// changes, so such a disagreement left the previous row lit.
     fn paint_menu_card(
         &mut self,
         labels: &[&str],
         anchor: (f32, f32),
+        hovered: Option<usize>,
         item_type_of: fn(usize) -> UIItemType,
     ) -> anyhow::Result<()> {
         let colors = match self.sidebar.as_ref() {
@@ -331,6 +352,11 @@ impl crate::TermWindow {
         let menu_border = opaque(colors.menu_border.to_linear());
         let mut row_eles = vec![];
         for (idx, label) in labels.iter().enumerate() {
+            let (row_bg, row_fg) = if hovered == Some(idx) {
+                (hover_bg, colors.hover_fg.to_linear())
+            } else {
+                (bg, colors.foreground.to_linear())
+            };
             row_eles.push(
                 Element::new(&font, ElementContent::Text(label.to_string()))
                     .display(DisplayType::Block)
@@ -354,15 +380,10 @@ impl crate::TermWindow {
                     .border(BoxDimension::new(Dimension::Pixels(1.)))
                     .border_corners(Some(rounded()))
                     .colors(ElementColors {
-                        border: BorderColor::new(bg),
-                        bg: bg.into(),
-                        text: colors.foreground.to_linear().into(),
-                    })
-                    .hover_colors(Some(ElementColors {
-                        border: BorderColor::new(hover_bg),
-                        bg: hover_bg.into(),
-                        text: colors.hover_fg.to_linear().into(),
-                    })),
+                        border: BorderColor::new(row_bg),
+                        bg: row_bg.into(),
+                        text: row_fg.into(),
+                    }),
             );
         }
 
