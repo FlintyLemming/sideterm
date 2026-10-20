@@ -771,16 +771,24 @@ fn delegate_to_gui(saver: UmaskSaver) -> anyhow::Result<()> {
     // Restore the original umask
     drop(saver);
 
-    let exe_name = if cfg!(windows) {
-        "wezterm-gui.exe"
+    // The installer renames the executables to sideterm-*;
+    // development builds still produce wezterm-* names, so
+    // prefer the sideterm name and fall back to the wezterm one.
+    let names: &[&str] = if cfg!(windows) {
+        &["sideterm-gui.exe", "wezterm-gui.exe"]
     } else {
-        "wezterm-gui"
+        &["sideterm-gui", "wezterm-gui"]
     };
 
-    let exe = std::env::current_exe()?
+    let dir = std::env::current_exe()?
         .parent()
         .ok_or_else(|| anyhow!("exe has no parent dir!?"))?
-        .join(exe_name);
+        .to_path_buf();
+    let exe = names
+        .iter()
+        .map(|name| dir.join(name))
+        .find(|candidate| candidate.exists())
+        .unwrap_or_else(|| dir.join(names[0]));
 
     let mut cmd = Command::new(exe);
     if cfg!(windows) {
